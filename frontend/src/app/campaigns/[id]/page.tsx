@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ContactType } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { Chip } from "@/components/ui/chip";
 import { useBrand } from "@/lib/use-brand";
 import { PageHeader } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
@@ -24,6 +24,8 @@ const AUDIENCE: { value: ContactType; label: string }[] = [
   { value: "internal", label: "Internal (colleagues)" },
 ];
 // Which types are pre-checked for a category (user can change).
+// Keep in sync with backend `defaultTypesForCategory` in routes/campaigns.ts —
+// that is the authoritative rule; this only pre-checks the boxes.
 function defaultTypes(category?: string): ContactType[] {
   return category === "Marketing/Offers" ? ["client", "prospect"] : ["client"];
 }
@@ -43,18 +45,24 @@ export default function CampaignDetail() {
   const campaign = campaigns.data?.find((c) => c.id === id);
   const recipients = useQuery({ queryKey: ["recipients", id], queryFn: () => api.recipients(id) });
   const contacts = useQuery({ queryKey: ["contacts", brandId], queryFn: () => api.contacts(brandId!), enabled: !!brandId });
+  const suppressions = useQuery({ queryKey: ["suppressions", brandId], queryFn: () => api.suppressions(brandId!), enabled: !!brandId });
 
   const types = pickedTypes ?? defaultTypes(campaign?.category);
   const toggleType = (t: ContactType) =>
     setPickedTypes(types.includes(t) ? types.filter((x) => x !== t) : [...types, t]);
 
-  // Live audience preview (subscribed + selected types + optional plan/company).
+  // Live audience preview — mirrors the backend send filter so "~N" is accurate:
+  // subscribed + selected types + optional plan/company, minus suppressed emails.
+  // Company match is trimmed + case-insensitive.
+  const companyQ = company.trim().toLowerCase();
+  const suppressedSet = new Set((suppressions.data ?? []).map((s) => s.email));
   const audience = (contacts.data ?? []).filter(
     (c) =>
       c.status === "subscribed" &&
+      !suppressedSet.has(c.email) &&
       types.includes(c.type) &&
       (!plan || c.plan === plan) &&
-      (!company || (c.company ?? "") === company)
+      (!companyQ || (c.company ?? "").trim().toLowerCase() === companyQ)
   );
 
   const sendMut = useMutation({
@@ -94,19 +102,9 @@ export default function CampaignDetail() {
               <Label>Send to</Label>
               <div className="flex flex-wrap gap-2">
                 {AUDIENCE.map((a) => (
-                  <button
-                    key={a.value}
-                    type="button"
-                    onClick={() => toggleType(a.value)}
-                    className={cn(
-                      "rounded-full border px-3 py-1 text-sm transition-colors",
-                      types.includes(a.value)
-                        ? "border-transparent bg-foreground text-background"
-                        : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-                    )}
-                  >
+                  <Chip key={a.value} active={types.includes(a.value)} onClick={() => toggleType(a.value)}>
                     {types.includes(a.value) ? "✓ " : ""}{a.label}
-                  </button>
+                  </Chip>
                 ))}
               </div>
             </div>
@@ -123,11 +121,13 @@ export default function CampaignDetail() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={() => sendMut.mutate()} disabled={sendMut.isPending || types.length === 0}>
+              <Button onClick={() => sendMut.mutate()} disabled={sendMut.isPending || types.length === 0 || !campaign}>
                 <Send className="size-4" /> {sendMut.isPending ? "Sending…" : "Send now"}
               </Button>
               <span className="text-sm text-muted-foreground">
-                {types.length === 0
+                {!campaign
+                  ? "Loading campaign…"
+                  : types.length === 0
                   ? "Pick at least one audience above."
                   : `This email goes to: ${types.map((t) => AUDIENCE.find((a) => a.value === t)?.label).join(" + ")} · ~${audience.length} people`}
               </span>

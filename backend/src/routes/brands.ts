@@ -48,9 +48,23 @@ router.post("/brands/:brandId/contacts", async (req, res) => {
   const parsed = contactSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const email = parsed.data.email.trim().toLowerCase();
+  // Store blank optional fields as null (not ""), same as the CSV importer.
+  const clean = (s?: string) => {
+    const t = s?.trim();
+    return t ? t : null;
+  };
   try {
     const contact = await prisma.contact.create({
-      data: { ...parsed.data, email, brandId: req.params.brandId },
+      data: {
+        brandId: req.params.brandId,
+        email,
+        name: clean(parsed.data.name),
+        country: clean(parsed.data.country),
+        plan: clean(parsed.data.plan),
+        type: parsed.data.type ?? "client",
+        // internal (our colleagues) never carry a company.
+        company: parsed.data.type === "internal" ? null : clean(parsed.data.company),
+      },
     });
     res.status(201).json(contact);
   } catch (e: any) {
@@ -67,6 +81,15 @@ router.get("/brands/:brandId/contacts", async (req, res) => {
     orderBy: { createdAt: "desc" },
   });
   res.json(contacts);
+});
+
+// List suppressed emails of a brand (used e.g. for an accurate send preview).
+router.get("/brands/:brandId/suppressions", async (req, res) => {
+  const rows = await prisma.suppression.findMany({
+    where: { brandId: req.params.brandId },
+    select: { email: true, reason: true },
+  });
+  res.json(rows);
 });
 
 // Import many contacts from a CSV file (field name: "file")
@@ -92,7 +115,8 @@ router.post("/brands/:brandId/contacts/import", upload.single("file"), async (re
         country: r.country?.trim() || null,
         plan: r.plan?.trim() || null,
         type,
-        company: r.company?.trim() || null,
+        // internal (our colleagues) never carry a company.
+        company: type === "internal" ? null : r.company?.trim() || null,
       };
     });
 

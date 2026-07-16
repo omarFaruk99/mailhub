@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Upload, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Chip } from "@/components/ui/chip";
 import type { ContactType } from "@/lib/api";
 
 // Contact type options + how each looks as a small badge.
@@ -99,7 +100,14 @@ export default function ContactsPage() {
                   <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Type">
-                      <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as ContactType })}>
+                      <Select
+                        value={form.type}
+                        onValueChange={(v) => {
+                          const t = (v ?? form.type) as ContactType;
+                          // internal (our colleagues) never carry a company → clear it.
+                          setForm({ ...form, type: t, company: t === "internal" ? "" : form.company });
+                        }}
+                      >
                         <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
@@ -129,13 +137,13 @@ export default function ContactsPage() {
       <div className="flex w-full max-w-6xl flex-col gap-4 p-6">
         {/* Type filter chips */}
         <div className="flex flex-wrap gap-2">
-          <FilterChip active={typeFilter === "all"} onClick={() => setTypeFilter("all")}>
+          <Chip active={typeFilter === "all"} onClick={() => setTypeFilter("all")}>
             All ({contacts.data?.length ?? 0})
-          </FilterChip>
+          </Chip>
           {TYPES.map((t) => (
-            <FilterChip key={t.value} active={typeFilter === t.value} onClick={() => setTypeFilter(t.value)}>
+            <Chip key={t.value} active={typeFilter === t.value} onClick={() => setTypeFilter(t.value)}>
               {t.label} ({(contacts.data ?? []).filter((c) => c.type === t.value).length})
-            </FilterChip>
+            </Chip>
           ))}
         </div>
 
@@ -187,22 +195,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <Label>{label}</Label>
       {children}
     </div>
-  );
-}
-
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-full border px-3 py-1 text-sm transition-colors",
-        active
-          ? "border-transparent bg-foreground text-background"
-          : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-      )}
-    >
-      {children}
-    </button>
   );
 }

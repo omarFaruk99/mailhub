@@ -54,6 +54,8 @@ router.get("/campaigns/:campaignId/recipients", async (req, res) => {
 // does not pass includeTypes). This is the safe server-side rule; the UI
 // mirrors it to pre-check boxes, but the user can adjust and send its own list.
 const CONTACT_TYPES = ["client", "prospect", "internal"] as const;
+// Authoritative rule. Frontend `defaultTypes` (campaigns/[id]/page.tsx) mirrors
+// this to pre-check boxes — keep the two in sync.
 function defaultTypesForCategory(category: string): string[] {
   if (category === "Marketing/Offers") return ["client", "prospect"];
   return ["client"]; // Product updates / Tips / Transactional: clients by default
@@ -80,6 +82,9 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
       ? filter.data.includeTypes
       : defaultTypesForCategory(campaign.category);
 
+  // Company filter: trim + case-insensitive so "abc travel" matches "ABC Travel".
+  const companyFilter = filter.data.company?.trim();
+
   // 1) Suppressed emails for this brand (unsubscribe/bounce/complaint).
   const suppressed = await prisma.suppression.findMany({
     where: { brandId: campaign.brandId },
@@ -95,7 +100,7 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
       type: { in: includeTypes },
       ...(filter.data.plan ? { plan: filter.data.plan } : {}),
       ...(filter.data.country ? { country: filter.data.country } : {}),
-      ...(filter.data.company ? { company: filter.data.company } : {}),
+      ...(companyFilter ? { company: { equals: companyFilter, mode: "insensitive" as const } } : {}),
     },
   });
 

@@ -55,6 +55,8 @@ export const api = {
     req<Brand>("/brands", { method: "POST", body: JSON.stringify(b) }),
 
   contacts: (brandId: string) => req<Contact[]>(`/brands/${brandId}/contacts`),
+  suppressions: (brandId: string) =>
+    req<{ email: string; reason: string }[]>(`/brands/${brandId}/suppressions`),
   addContact: (brandId: string, c: Partial<Contact>) =>
     req<Contact>(`/brands/${brandId}/contacts`, { method: "POST", body: JSON.stringify(c) }),
   importCsv: async (brandId: string, file: File) => {
