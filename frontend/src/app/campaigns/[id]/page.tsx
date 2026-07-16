@@ -4,6 +4,8 @@ import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import type { ContactType } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { useBrand } from "@/lib/use-brand";
 import { PageHeader } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
@@ -16,6 +18,16 @@ import {
 } from "@/components/ui/table";
 import { Send } from "lucide-react";
 
+const AUDIENCE: { value: ContactType; label: string }[] = [
+  { value: "client", label: "Client" },
+  { value: "prospect", label: "Prospect" },
+  { value: "internal", label: "Internal (colleagues)" },
+];
+// Which types are pre-checked for a category (user can change).
+function defaultTypes(category?: string): ContactType[] {
+  return category === "Marketing/Offers" ? ["client", "prospect"] : ["client"];
+}
+
 export default function CampaignDetail() {
   const params = useParams();
   const id = String(params.id);
@@ -23,13 +35,35 @@ export default function CampaignDetail() {
   const brandId = brand?.id;
   const qc = useQueryClient();
   const [plan, setPlan] = useState("");
+  const [company, setCompany] = useState("");
+  // null = not touched yet → use the category default.
+  const [pickedTypes, setPickedTypes] = useState<ContactType[] | null>(null);
 
   const campaigns = useQuery({ queryKey: ["campaigns", brandId], queryFn: () => api.campaigns(brandId!), enabled: !!brandId });
   const campaign = campaigns.data?.find((c) => c.id === id);
   const recipients = useQuery({ queryKey: ["recipients", id], queryFn: () => api.recipients(id) });
+  const contacts = useQuery({ queryKey: ["contacts", brandId], queryFn: () => api.contacts(brandId!), enabled: !!brandId });
+
+  const types = pickedTypes ?? defaultTypes(campaign?.category);
+  const toggleType = (t: ContactType) =>
+    setPickedTypes(types.includes(t) ? types.filter((x) => x !== t) : [...types, t]);
+
+  // Live audience preview (subscribed + selected types + optional plan/company).
+  const audience = (contacts.data ?? []).filter(
+    (c) =>
+      c.status === "subscribed" &&
+      types.includes(c.type) &&
+      (!plan || c.plan === plan) &&
+      (!company || (c.company ?? "") === company)
+  );
 
   const sendMut = useMutation({
-    mutationFn: () => api.sendCampaign(id, plan ? { plan } : {}),
+    mutationFn: () =>
+      api.sendCampaign(id, {
+        includeTypes: types,
+        ...(plan ? { plan } : {}),
+        ...(company ? { company } : {}),
+      }),
     onSuccess: (r) => {
       toast.success(`Sent ${r.sent} · skipped ${r.skippedSuppressed + r.skippedAlready} · failed ${r.failed}`);
       qc.invalidateQueries({ queryKey: ["recipients", id] });
@@ -54,16 +88,54 @@ export default function CampaignDetail() {
         {/* Send panel */}
         <Card>
           <CardHeader><CardTitle className="text-base">Send this campaign</CardTitle></CardHeader>
-          <CardContent className="flex flex-wrap items-end gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label>Filter by plan (optional)</Label>
-              <Input value={plan} onChange={(e) => setPlan(e.target.value)} placeholder="e.g. Paid — blank = everyone" className="w-64" />
+          <CardContent className="flex flex-col gap-4">
+            {/* Audience: who receives this */}
+            <div className="flex flex-col gap-2">
+              <Label>Send to</Label>
+              <div className="flex flex-wrap gap-2">
+                {AUDIENCE.map((a) => (
+                  <button
+                    key={a.value}
+                    type="button"
+                    onClick={() => toggleType(a.value)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-sm transition-colors",
+                      types.includes(a.value)
+                        ? "border-transparent bg-foreground text-background"
+                        : "border-input bg-transparent text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    {types.includes(a.value) ? "✓ " : ""}{a.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <Button onClick={() => sendMut.mutate()} disabled={sendMut.isPending}>
-              <Send className="size-4" /> {sendMut.isPending ? "Sending…" : "Send now"}
-            </Button>
+
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>Filter by plan (optional)</Label>
+                <Input value={plan} onChange={(e) => setPlan(e.target.value)} placeholder="blank = any plan" className="w-52" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Filter by company (optional)</Label>
+                <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="e.g. ABC Travel" className="w-52" />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={() => sendMut.mutate()} disabled={sendMut.isPending || types.length === 0}>
+                <Send className="size-4" /> {sendMut.isPending ? "Sending…" : "Send now"}
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                {types.length === 0
+                  ? "Pick at least one audience above."
+                  : `This email goes to: ${types.map((t) => AUDIENCE.find((a) => a.value === t)?.label).join(" + ")} · ~${audience.length} people`}
+              </span>
+            </div>
+
             <p className="text-xs text-muted-foreground">
               Only subscribed, non-suppressed contacts receive it. Unsubscribe link is added automatically.
+              {campaign ? ` Defaults for "${campaign.category}" are pre-selected — you can change them.` : ""}
             </p>
           </CardContent>
         </Card>

@@ -22,13 +22,15 @@ model Brand {
   suppressions Suppression[]
 }
 
-// A contact = one client of a brand.
+// A contact = one person of a brand (client, prospect, or internal colleague).
 model Contact {
   id        String   @id @default(uuid())
   email     String
   name      String?
   country   String?
   plan      String?  // e.g. Paid / Trial / Free
+  type      String   @default("client")  // client | prospect | internal (internal = our own colleagues)
+  company   String?  // external company name, used for filtering (blank for internal/individuals)
   status    String   @default("subscribed") // subscribed | unsubscribed | bounced
   createdAt DateTime @default(now())
 

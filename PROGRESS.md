@@ -10,9 +10,16 @@ real emails delivered via Amazon SES.
 ### Backend — `backend/` (Express + TypeScript + Prisma 7 + PostgreSQL)
 - **Brands**: create, list.
 - **Contacts**: add, list, **CSV import** (Papa Parse). Rule enforced: one email = one
-  contact per brand (unique `[brandId, email]`).
-- **Campaigns**: create (draft), list, **send/broadcast** with filter (plan/country),
-  **exactly-once** (unique `[campaignId, contactId]`), recipients list.
+  contact per brand (unique `[brandId, email]`). Each contact has a **`type`**
+  (`client` | `prospect` | `internal`) and optional **`company`** (external company
+  name, for filtering; blank for internal/individuals).
+- **Campaigns**: create (draft), list, **send/broadcast** with filter
+  (plan/country/**company**/**contact type**), **exactly-once**
+  (unique `[campaignId, contactId]`), recipients list.
+  - **Audience by type:** send accepts `includeTypes` (which contact types receive it).
+    Category defaults: **Marketing/Offers → client+prospect**; **Product updates / Tips /
+    Transactional → client** (user can opt-in prospect/internal via checkboxes).
+    `internal` = our own colleagues; never in the default marketing/product audience.
 - **Unsubscribe**: link + **one-click List-Unsubscribe header (RFC 8058)**; GET page + POST.
 - **Suppression**: per-brand; unsubscribe/bounce/complaint excluded from sends.
 - **SES sending**: `@aws-sdk/client-sesv2`, UTF-8, custom headers.
@@ -25,8 +32,10 @@ real emails delivered via Amazon SES.
   `src/email/ses.ts`, `src/prisma.ts`, `prisma/schema.prisma`, `prisma.config.ts`.
 
 ### Frontend — `frontend/` (Next.js 16 + shadcn/ui + Tailwind v4 + TanStack Query)
-- Screens: **Dashboard**, **Contacts** (add + CSV import), **Campaigns** (create + list),
-  **Campaign detail** (send with filter + open/click stats).
+- Screens: **Dashboard**, **Contacts** (add + CSV import; **type dropdown + company
+  field**, type filter chips, type badge), **Campaigns** (create + list),
+  **Campaign detail** (send with **audience checkboxes** Client/Prospect/Internal +
+  plan/company filter + live "~N people" summary + open/click stats).
 - Design: clean **Loops-style** — left sidebar (workspace switcher, search box, nav,
   user footer + theme toggle), soft **violet** accent, near-black buttons, light/dark.
   All colors/fonts are tokens in `src/app/globals.css` (change once → whole app).
@@ -34,8 +43,8 @@ real emails delivered via Amazon SES.
   (`src/lib/use-brand.ts` uses the first brand).
 
 ### DB schema (Prisma models)
-Brand, Contact, Campaign, CampaignRecipient, Suppression. (Migrations in
-`backend/prisma/migrations/`.)
+Brand, Contact (now with `type` + `company`), Campaign, CampaignRecipient,
+Suppression. (Migrations in `backend/prisma/migrations/`.)
 
 ## Run locally
 1. `docker compose up -d db`
@@ -51,7 +60,8 @@ Personal AWS, region **ap-southeast-1**, **sandbox**. Sender `no-reply@omarsec.c
 
 ## ⏭️ Not built yet — next (Phase 2+)
 - **Working global search** (sidebar box is visual only).
-- **Filters + saved segments** UI on Contacts/Campaigns (chips like the concept demo).
+- **Saved segments** (contact `type`/`company` filter chips are done; saving a
+  named segment + more filter fields still pending).
 - **Dashboard widgets** to match the concept: engagement chart, deliverability card,
   sparkline stat tiles. (Only add real data — don't fake metrics.)
 - **Template editor**, **Automations**, **Analytics** screen.
