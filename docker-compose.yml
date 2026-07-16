@@ -1,0 +1,25 @@
+# docker-compose — runs the parts of our system together.
+# Step 1: only the database. We add backend + frontend in later steps.
+
+# Fixed project name — Docker always groups under "mailhub",
+# no matter what the folder is called.
+name: mailhub
+
+services:
+  db:
+    image: postgres:16
+    container_name: mailhub-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      # Data lives in this named volume, NOT inside the container.
+      # So restarting/removing the container never loses data.
+      - mailhub_pgdata:/var/lib/postgresql/data
+
+volumes:
+  mailhub_pgdata:

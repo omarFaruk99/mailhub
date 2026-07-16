@@ -1,0 +1,5 @@
+email,name,country,plan
+alice@example.com,Alice,USA,Paid
+bob@example.com,Bob,UK,Trial
+carol@example.com,Carol,Canada,Paid
+alice@example.com,Alice Duplicate,USA,Paid

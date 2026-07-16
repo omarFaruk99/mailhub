@@ -1,0 +1,21 @@
+# Secrets — NEVER commit
+.env
+.env.local
+*.pem
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Generated Prisma client
+**/generated/
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
