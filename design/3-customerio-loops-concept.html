@@ -1,0 +1,377 @@
+<title>MailHub — Concept (Customer.io / Loops)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f3f4f7; --surface-3:#ebedf2;
+    --sidebar:#fbfbfc; --border:#e8eaf0; --border-2:#dee1ea;
+    --text:#1b1d26; --muted:#5f6472; --faint:#9aa0b0;
+    --accent:#5847eb; --accent-2:#7d70f2; --accent-weak:#efedfd;
+    --good:#12a150; --good-weak:#e7f5ec; --warn:#b7791f; --warn-weak:#fbf2df;
+    --crit:#dc3546; --crit-weak:#fceaec;
+    --shadow-xs:0 1px 2px rgba(27,29,38,.04);
+    --shadow:0 1px 3px rgba(27,29,38,.06),0 1px 2px rgba(27,29,38,.04);
+    --pop:0 12px 40px -10px rgba(27,29,38,.22);
+    --r:12px;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0b0c0f; --surface:#141519; --surface-2:#1a1c22; --surface-3:#23262e;
+      --sidebar:#101116; --border:#23252d; --border-2:#2d3038;
+      --text:#f0f1f5; --muted:#9ba1b0; --faint:#6b7180;
+      --accent:#8b80f5; --accent-2:#a99ff8; --accent-weak:#1e1b39;
+      --good:#3ecf7f; --good-weak:#10251a; --warn:#e0a53a; --warn-weak:#271e0e; --crit:#f4707f; --crit-weak:#2a1418;
+      --shadow-xs:0 1px 2px rgba(0,0,0,.4); --shadow:0 1px 3px rgba(0,0,0,.5); --pop:0 12px 40px -10px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b0c0f; --surface:#141519; --surface-2:#1a1c22; --surface-3:#23262e; --sidebar:#101116;
+    --border:#23252d; --border-2:#2d3038; --text:#f0f1f5; --muted:#9ba1b0; --faint:#6b7180;
+    --accent:#8b80f5; --accent-2:#a99ff8; --accent-weak:#1e1b39;
+    --good:#3ecf7f; --good-weak:#10251a; --warn:#e0a53a; --warn-weak:#271e0e; --crit:#f4707f; --crit-weak:#2a1418;
+    --shadow-xs:0 1px 2px rgba(0,0,0,.4); --shadow:0 1px 3px rgba(0,0,0,.5); --pop:0 12px 40px -10px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f3f4f7; --surface-3:#ebedf2; --sidebar:#fbfbfc;
+    --border:#e8eaf0; --border-2:#dee1ea; --text:#1b1d26; --muted:#5f6472; --faint:#9aa0b0;
+    --accent:#5847eb; --accent-2:#7d70f2; --accent-weak:#efedfd;
+    --good:#12a150; --good-weak:#e7f5ec; --warn:#b7791f; --warn-weak:#fbf2df; --crit:#dc3546; --crit-weak:#fceaec;
+    --shadow-xs:0 1px 2px rgba(27,29,38,.04); --shadow:0 1px 3px rgba(27,29,38,.06); --pop:0 12px 40px -10px rgba(27,29,38,.22);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;letter-spacing:-.006em}
+  .num{font-variant-numeric:tabular-nums}
+  .app{display:grid;grid-template-columns:254px 1fr;min-height:100vh}
+
+  /* Sidebar */
+  .side{background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;
+    padding:12px 11px;position:sticky;top:0;height:100vh;gap:2px}
+  .ws{position:relative;margin-bottom:10px}
+  .ws-b{width:100%;display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;border:1px solid transparent;background:none;cursor:pointer;text-align:left;font-family:var(--sans)}
+  .ws-b:hover{background:var(--surface-2)}
+  .ws-logo{width:32px;height:32px;border-radius:9px;flex:none;background:linear-gradient(140deg,var(--accent),var(--accent-2));color:#fff;display:grid;place-items:center;font-weight:700;font-size:15px}
+  .ws-n{font-size:13.5px;font-weight:650;line-height:1.15}
+  .ws-n small{display:block;font-size:11.5px;color:var(--faint);font-weight:500;margin-top:1px}
+  .ws-b .cv{margin-left:auto;color:var(--faint)}
+  .ws-m{position:absolute;top:calc(100% + 5px);left:0;right:0;background:var(--surface);border:1px solid var(--border-2);
+    border-radius:11px;box-shadow:var(--pop);padding:5px;z-index:40;display:none}
+  .ws.open .ws-m{display:block}
+  .ws-o{display:flex;align-items:center;gap:9px;padding:8px;border-radius:8px;cursor:pointer;font-size:13px}
+  .ws-o:hover{background:var(--surface-2)} .ws-o .d{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;flex:none}
+  .ws-o .tk{margin-left:auto;color:var(--accent);opacity:0}.ws-o.sel .tk{opacity:1}
+  .ws-sep{height:1px;background:var(--border);margin:5px 6px}
+  .ws-add{display:flex;gap:8px;align-items:center;padding:8px;border-radius:8px;cursor:pointer;font-size:12.5px;color:var(--accent);font-weight:600}
+  .ws-add:hover{background:var(--accent-weak)}
+
+  .search{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:7px 10px;color:var(--faint);font-size:13px;margin-bottom:8px;cursor:text}
+  .search kbd{margin-left:auto;font-size:10px;background:var(--surface);border:1px solid var(--border-2);border-radius:4px;padding:0 5px}
+  .glabel{font-size:10.5px;font-weight:650;letter-spacing:.05em;color:var(--faint);text-transform:uppercase;padding:12px 10px 5px}
+  .nav{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:9px;color:var(--muted);cursor:pointer;font-weight:500;border:none;background:none;width:100%;text-align:left;font-size:13.5px;font-family:var(--sans);position:relative}
+  .nav svg{width:17px;height:17px;flex:none;stroke-width:1.75;opacity:.8}
+  .nav:hover{background:var(--surface-2);color:var(--text)}
+  .nav.active{background:var(--surface);color:var(--text);font-weight:600;box-shadow:var(--shadow-xs);border:1px solid var(--border)}
+  .nav.active svg{color:var(--accent);opacity:1}
+  .nav .c{margin-left:auto;font-size:11px;color:var(--faint)}
+  .side .foot{margin-top:auto;display:flex;align-items:center;gap:9px;padding:9px 8px 2px;border-top:1px solid var(--border)}
+  .av{width:30px;height:30px;border-radius:50%;flex:none;background:linear-gradient(140deg,var(--accent),var(--accent-2));color:#fff;display:grid;place-items:center;font-weight:600;font-size:11px}
+  .foot .w{font-size:12.5px;font-weight:600;line-height:1.25}.foot .w small{display:block;color:var(--faint);font-size:11px;font-weight:500}
+
+  /* Main */
+  .main{display:flex;flex-direction:column;min-width:0}
+  .top{display:flex;align-items:center;gap:12px;padding:15px 26px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--surface) 78%,transparent);position:sticky;top:0;backdrop-filter:blur(10px);z-index:20}
+  .crumb{font-size:11.5px;color:var(--faint);font-weight:500;margin-bottom:2px}
+  .crumb b{color:var(--muted);font-weight:600}
+  .top h1{font-size:18.5px;margin:0;font-weight:650;letter-spacing:-.02em}
+  .grow{margin-left:auto}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:8px 14px;font-weight:600;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;font-family:var(--sans);white-space:nowrap;box-shadow:var(--shadow-xs)}
+  .btn:hover{filter:brightness(1.05)}.btn svg{width:15px;height:15px;stroke-width:2.2}
+  .btn.ghost{background:var(--surface);color:var(--text);border:1px solid var(--border-2);box-shadow:none}
+  .btn.ghost:hover{background:var(--surface-2);filter:none}
+  .ic{width:35px;height:35px;border-radius:9px;border:1px solid var(--border-2);background:var(--surface);display:grid;place-items:center;cursor:pointer;color:var(--muted)}
+  .ic:hover{background:var(--surface-2)}
+
+  .content{padding:24px 26px 60px;max-width:1140px;width:100%}
+  .view{display:none;flex-direction:column;gap:20px}.view.active{display:flex;animation:fade .22s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-xs)}
+  .pad{padding:18px 20px}
+  .sec{display:flex;align-items:center;gap:10px;margin-bottom:15px}
+  .sec h2{font-size:14.5px;margin:0;font-weight:650;letter-spacing:-.01em}
+  .sec .link{margin-left:auto;color:var(--accent);font-size:12.5px;font-weight:600;cursor:pointer;background:none;border:none}
+  .muted{color:var(--muted)}.faint{color:var(--faint)}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 17px;box-shadow:var(--shadow-xs)}
+  .tile .l{font-size:12.5px;color:var(--muted);font-weight:550}
+  .tile .r{display:flex;align-items:flex-end;gap:10px;margin-top:9px}
+  .tile .v{font-size:26px;font-weight:680;letter-spacing:-.025em;line-height:1}
+  .tile .spark{margin-left:auto}
+  .tile .d{font-size:12px;font-weight:600;margin-top:7px}
+  .up{color:var(--good)}.down{color:var(--crit)}
+
+  .g2{display:grid;grid-template-columns:1.7fr 1fr;gap:16px}
+  .g2b{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:20px;white-space:nowrap}
+  .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .pill.good{background:var(--good-weak);color:var(--good)}.pill.warn{background:var(--warn-weak);color:var(--warn)}
+  .pill.crit{background:var(--crit-weak);color:var(--crit)}.pill.neu{background:var(--surface-3);color:var(--muted)}.pill.acc{background:var(--accent-weak);color:var(--accent)}
+  .pill.np::before{display:none}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:0 14px 11px}
+  td{padding:12px 14px;border-top:1px solid var(--border);vertical-align:middle}
+  tbody tr{cursor:pointer}tbody tr:hover td{background:var(--surface-2)}
+  .cn{font-weight:600}.cn small{display:block;font-size:11.5px;color:var(--faint);font-weight:450;margin-top:1px}
+  .bar{height:6px;border-radius:3px;background:var(--surface-3);width:58px;display:inline-block;vertical-align:middle;margin-left:8px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--accent);border-radius:3px}
+
+  .chartwrap{width:100%;overflow-x:auto}svg.chart{display:block;width:100%;height:auto}
+  .legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-top:8px}.legend i{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:6px;vertical-align:middle}
+
+  .auth{display:flex;align-items:center;gap:11px;padding:12px 0;border-top:1px solid var(--border)}.auth:first-of-type{border-top:none}
+  .auth .i{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none;font-size:13px;font-weight:700}
+  .auth b{font-size:13px}.auth small{color:var(--faint);display:block;font-size:11.5px}
+  .track{height:7px;border-radius:5px;background:var(--surface-3);margin:10px 0 4px;overflow:hidden}.track>i{display:block;height:100%;border-radius:5px}
+  .scale{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint)}
+
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .chip{border:1px solid var(--border-2);background:var(--surface);border-radius:8px;padding:7px 12px;font-size:12.5px;color:var(--muted);cursor:pointer;font-weight:500;display:inline-flex;gap:6px;align-items:center}
+  .chip:hover{border-color:var(--accent)}.chip.on{background:var(--accent-weak);color:var(--accent);border-color:transparent;font-weight:600}
+  .tag{font-size:11px;padding:2px 8px;border-radius:6px;background:var(--surface-3);color:var(--muted);font-weight:600}.tag.acc{background:var(--accent-weak);color:var(--accent)}
+
+  .gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}
+  .tpl{border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--surface);cursor:pointer;box-shadow:var(--shadow-xs)}
+  .tpl:hover{border-color:var(--accent)}
+  .tpl .pv{height:122px;background:var(--surface-2);border-bottom:1px solid var(--border);padding:14px}
+  .tpl .pv .h{height:8px;width:52%;background:var(--accent);border-radius:3px;opacity:.85}
+  .tpl .pv .l{height:6px;background:var(--surface-3);border-radius:3px;margin-top:8px}
+  .tpl .pv .im{height:42px;background:var(--surface-3);border-radius:6px;margin-top:9px;display:grid;place-items:center;color:var(--faint);font-size:12px}
+  .tpl .cap{padding:12px 14px;display:flex;align-items:center;gap:8px}.tpl .cap b{font-size:13px;font-weight:600}
+
+  .flow{display:flex;flex-direction:column;padding:4px}
+  .step{display:flex;gap:13px;align-items:flex-start}
+  .step .rail{display:flex;flex-direction:column;align-items:center;flex:none}
+  .step .node{width:32px;height:32px;border-radius:9px;background:var(--accent-weak);color:var(--accent);display:grid;place-items:center;font-weight:650;font-size:13px}
+  .step.wait .node{background:var(--warn-weak);color:var(--warn)}
+  .step .line{width:2px;flex:1;background:var(--border-2);min-height:24px}.step:last-child .line{display:none}
+  .step .body{padding-bottom:20px}.step .body b{font-size:13px;font-weight:600}.step .body small{display:block;color:var(--faint);font-size:12px;margin-top:2px}
+
+  @media (max-width:960px){.app{grid-template-columns:1fr}.side{display:none}.stats{grid-template-columns:repeat(2,1fr)}.g2,.g2b{grid-template-columns:1fr}.gallery{grid-template-columns:1fr 1fr}.content{padding:16px}.hide-sm{display:none}}
+</style>
+
+<div class="app">
+  <aside class="side">
+    <div class="ws" id="ws">
+      <button class="ws-b" onclick="toggleWs()">
+        <span class="ws-logo" id="wl">I</span>
+        <span class="ws-n" id="wn">Innovate Solution<small>Inno Travel Tech</small></span>
+        <svg class="cv" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="ws-m" id="wm">
+        <div class="ws-o sel" onclick="pickBrand(0)"><span class="d" style="background:#5847eb">I</span>Innovate Solution<span class="tk">✓</span></div>
+        <div class="ws-o" onclick="pickBrand(1)"><span class="d" style="background:#0f9d94">T</span>Tripgic<span class="tk">✓</span></div>
+        <div class="ws-o" onclick="pickBrand(2)"><span class="d" style="background:#d4652b">T</span>Tripmargin<span class="tk">✓</span></div>
+        <div class="ws-sep"></div><div class="ws-add">＋ Add brand</div>
+      </div>
+    </div>
+
+    <div class="search">🔍 Search <kbd>⌘K</kbd></div>
+
+    <nav>
+      <button class="nav active" onclick="go('dashboard',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Dashboard</button>
+      <button class="nav" onclick="go('campaigns',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m3 11 18-5v12L3 14z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>Campaigns<span class="c">6</span></button>
+      <button class="nav" onclick="go('contacts',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>Contacts<span class="c">4,820</span></button>
+      <button class="nav" onclick="go('audiences',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg>Audiences</button>
+      <div class="glabel">Create</div>
+      <button class="nav" onclick="go('templates',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>Templates</button>
+      <button class="nav" onclick="go('automations',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="12" r="2"/><path d="M7 6h6a4 4 0 0 1 4 4M7 18h6a4 4 0 0 0 4-4"/></svg>Automations</button>
+      <div class="glabel">Insights</div>
+      <button class="nav" onclick="go('analytics',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>Analytics</button>
+      <button class="nav" onclick="go('settings',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 6 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3.6 15H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9"/></svg>Settings</button>
+    </nav>
+
+    <div class="foot"><div class="av">OF</div><div class="w">Omar Faruk<small>Brand Admin</small></div>
+      <button class="ic" style="margin-left:auto;width:30px;height:30px" onclick="toggleTheme()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg></button></div>
+  </aside>
+
+  <div class="main">
+    <div class="top">
+      <div><div class="crumb"><b id="cb">Innovate Solution</b> › <span id="cv2">Dashboard</span></div><h1 id="pt">Dashboard</h1></div>
+      <div class="grow"></div>
+      <button class="ic hide-sm" title="Notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+      <button class="btn" onclick="go('campaigns',qNav(1))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>New campaign</button>
+    </div>
+
+    <div class="content">
+      <!-- DASHBOARD -->
+      <section class="view active" id="dashboard">
+        <div class="stats">
+          <div class="tile"><div class="l">Total contacts</div><div class="r"><div class="v num">4,820</div><canvas class="spark" data-s="a" width="64" height="28"></canvas></div><div class="d up">↑ 3.2% this month</div></div>
+          <div class="tile"><div class="l">Sent · 30 days</div><div class="r"><div class="v num">9,240</div><canvas class="spark" data-s="b" width="64" height="28"></canvas></div><div class="d up">↑ 8.1%</div></div>
+          <div class="tile"><div class="l">Open rate</div><div class="r"><div class="v num">42.6%</div><canvas class="spark" data-s="c" width="64" height="28"></canvas></div><div class="d up">↑ 1.8%</div></div>
+          <div class="tile"><div class="l">Complaint rate</div><div class="r"><div class="v num">0.04%</div></div><div class="d"><span class="pill good np" style="padding:1px 8px">Healthy</span></div></div>
+        </div>
+        <div class="g2">
+          <div class="card pad"><div class="sec"><h2>Engagement</h2><span class="faint" style="margin-left:auto;font-size:12px">Sent vs Opened · 30d</span></div>
+            <div class="chartwrap"><svg class="chart" id="lineChart" viewBox="0 0 720 210"></svg></div>
+            <div class="legend"><span><i style="background:var(--accent)"></i>Sent</span><span><i style="background:var(--good)"></i>Opened</span></div></div>
+          <div class="card pad"><div class="sec"><h2>Deliverability</h2><span class="pill good" style="margin-left:auto">Good</span></div>
+            <div class="auth"><div class="i" style="background:var(--good-weak);color:var(--good)">✓</div><div><b>SPF</b><small>Verified & aligned</small></div></div>
+            <div class="auth"><div class="i" style="background:var(--good-weak);color:var(--good)">✓</div><div><b>DKIM</b><small>Signing active</small></div></div>
+            <div class="auth"><div class="i" style="background:var(--good-weak);color:var(--good)">✓</div><div><b>DMARC</b><small>p=quarantine</small></div></div>
+            <div style="margin-top:12px"><div style="display:flex;justify-content:space-between;font-size:12px"><span class="muted">Complaint rate</span><b class="num">0.04% / 0.30%</b></div><div class="track"><i style="width:14%;background:var(--good)"></i></div><div class="scale"><span>0%</span><span>limit 0.30%</span></div></div></div>
+        </div>
+        <div class="card pad"><div class="sec"><h2>Recent campaigns</h2><button class="link" onclick="go('campaigns',qNav(1))">View all →</button></div>
+          <table><thead><tr><th>Campaign</th><th>Type</th><th>Sent</th><th>Open rate</th><th>Status</th></tr></thead><tbody>
+            <tr><td class="cn">GDS Auto Ticketing Queue<small>Product · Jul 2</small></td><td><span class="pill neu np">New feature</span></td><td class="num">812</td><td class="num">48%<span class="bar"><i style="width:48%"></i></span></td><td><span class="pill good">Sent</span></td></tr>
+            <tr><td class="cn">April Security Patch<small>Product · Jun 28</small></td><td><span class="pill neu np">Bug fix</span></td><td class="num">790</td><td class="num">51%<span class="bar"><i style="width:51%"></i></span></td><td><span class="pill good">Sent</span></td></tr>
+            <tr><td class="cn">Q2 Product Newsletter<small>Marketing · Jun 20</small></td><td><span class="pill neu np">Marketing</span></td><td class="num">4,120</td><td class="num">38%<span class="bar"><i style="width:38%"></i></span></td><td><span class="pill good">Sent</span></td></tr>
+            <tr><td class="cn">Summer Upgrade Offer<small>Marketing · draft</small></td><td><span class="pill neu np">Marketing</span></td><td class="num">—</td><td class="num">—</td><td><span class="pill warn">In review</span></td></tr>
+          </tbody></table></div>
+      </section>
+
+      <!-- CAMPAIGNS -->
+      <section class="view" id="campaigns">
+        <div class="toolbar"><span class="chip on">All · 6</span><span class="chip">Sent</span><span class="chip">Draft</span><span class="chip">In review</span><span class="chip">Automated</span>
+          <button class="btn" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>New campaign</button></div>
+        <div class="card" style="padding:6px 8px"><table><thead><tr><th>Name</th><th>Type</th><th>Team</th><th>Recipients</th><th>Open</th><th>Click</th><th>Status</th></tr></thead><tbody>
+          <tr><td class="cn">GDS Auto Ticketing Queue</td><td><span class="pill neu np">New feature</span></td><td class="muted">Product</td><td class="num">812</td><td class="num">48%</td><td class="num">12%</td><td><span class="pill good">Sent</span></td></tr>
+          <tr><td class="cn">April Security Patch</td><td><span class="pill neu np">Bug fix</span></td><td class="muted">Product</td><td class="num">790</td><td class="num">51%</td><td class="num">9%</td><td><span class="pill good">Sent</span></td></tr>
+          <tr><td class="cn">Q2 Product Newsletter</td><td><span class="pill neu np">Marketing</span></td><td class="muted">Marketing</td><td class="num">4,120</td><td class="num">38%</td><td class="num">6%</td><td><span class="pill good">Sent</span></td></tr>
+          <tr><td class="cn">Summer Upgrade Offer</td><td><span class="pill neu np">Marketing</span></td><td class="muted">Marketing</td><td class="num">2,400</td><td class="num">—</td><td class="num">—</td><td><span class="pill warn">In review</span></td></tr>
+          <tr><td class="cn">Maintenance Window</td><td><span class="pill neu np">Update</span></td><td class="muted">Product</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td><span class="pill neu">Draft</span></td></tr>
+          <tr><td class="cn">Welcome Series · Day 0</td><td><span class="pill acc np">Lifecycle</span></td><td class="muted">Success</td><td class="num">auto</td><td class="num">63%</td><td class="num">21%</td><td><span class="pill good">Automated</span></td></tr>
+        </tbody></table></div>
+      </section>
+
+      <!-- CONTACTS -->
+      <section class="view" id="contacts">
+        <div class="toolbar"><span class="chip on">All · 4,820</span><span class="chip">Paid · 3,110</span><span class="chip">Trial · 1,290</span><span class="chip">🇺🇸 USA</span><span class="chip">Active openers</span><span class="chip">＋ Filter</span>
+          <button class="btn ghost" style="margin-left:auto">Import CSV</button><button class="btn">＋ Add contact</button></div>
+        <div class="card" style="padding:6px 8px"><table><thead><tr><th>Name</th><th>Email</th><th>Plan</th><th>Country</th><th>Tags</th><th>Status</th></tr></thead><tbody>
+          <tr><td class="cn">Omar Faruk</td><td class="muted">omar@example.com</td><td>Paid</td><td>USA</td><td><span class="tag acc">VIP</span></td><td><span class="pill good">Subscribed</span></td></tr>
+          <tr><td class="cn">Sara Ahmed</td><td class="muted">sara@example.com</td><td>Trial</td><td>UK</td><td><span class="tag">New</span></td><td><span class="pill good">Subscribed</span></td></tr>
+          <tr><td class="cn">Liam Chen</td><td class="muted">liam@example.com</td><td>Paid</td><td>Singapore</td><td><span class="tag">Active</span></td><td><span class="pill good">Subscribed</span></td></tr>
+          <tr><td class="cn">Nadia Rahman</td><td class="muted">nadia@example.com</td><td>Paid</td><td>UAE</td><td><span class="tag acc">VIP</span></td><td><span class="pill neu">Unsubscribed</span></td></tr>
+          <tr><td class="cn">Tom Weber</td><td class="muted">tom@example.com</td><td>Trial</td><td>Germany</td><td><span class="tag">Inactive</span></td><td><span class="pill crit">Bounced</span></td></tr>
+        </tbody></table></div>
+      </section>
+
+      <!-- AUDIENCES -->
+      <section class="view" id="audiences">
+        <div class="sec"><h2>Saved segments</h2><button class="btn" style="margin-left:auto">＋ New segment</button></div>
+        <div class="g2b">
+          <div class="card pad"><div style="display:flex;gap:9px;align-items:center"><span class="pill acc np">Dynamic</span><b>USA · Paid clients</b></div><p class="muted" style="margin:9px 0 0;font-size:12.5px">country = USA AND plan = Paid AND status = Subscribed</p><div style="display:flex;gap:12px;margin-top:13px;align-items:baseline"><b class="num" style="font-size:23px;font-weight:680">1,204</b><span class="faint" style="font-size:12px">contacts</span></div></div>
+          <div class="card pad"><div style="display:flex;gap:9px;align-items:center"><span class="pill acc np">Dynamic</span><b>Active openers · 90d</b></div><p class="muted" style="margin:9px 0 0;font-size:12.5px">opened any email in last 90 days</p><div style="display:flex;gap:12px;margin-top:13px;align-items:baseline"><b class="num" style="font-size:23px;font-weight:680">2,657</b><span class="faint" style="font-size:12px">contacts</span></div></div>
+          <div class="card pad"><div style="display:flex;gap:9px;align-items:center"><span class="pill warn np">Sunset</span><b>Never opened · 6 months</b></div><p class="muted" style="margin:9px 0 0;font-size:12.5px">candidates to pause (list hygiene)</p><div style="display:flex;gap:12px;margin-top:13px;align-items:baseline"><b class="num" style="font-size:23px;font-weight:680">318</b><span class="faint" style="font-size:12px">contacts</span></div></div>
+          <div class="card pad"><div style="display:flex;gap:9px;align-items:center"><span class="pill neu np">Static</span><b>Beta testers</b></div><p class="muted" style="margin:9px 0 0;font-size:12.5px">manually managed list</p><div style="display:flex;gap:12px;margin-top:13px;align-items:baseline"><b class="num" style="font-size:23px;font-weight:680">64</b><span class="faint" style="font-size:12px">contacts</span></div></div>
+        </div>
+      </section>
+
+      <!-- TEMPLATES -->
+      <section class="view" id="templates">
+        <div class="toolbar"><span class="chip on">All</span><span class="chip">Product team</span><span class="chip">Marketing team</span><span class="chip">Brand kit</span><button class="btn" style="margin-left:auto">＋ New template</button></div>
+        <div class="gallery">
+          <div class="tpl"><div class="pv"><div class="h"></div><div class="l" style="width:90%"></div><div class="im">🖼 screenshot</div></div><div class="cap"><b>Product Update</b><span class="tag" style="margin-left:auto">Product</span></div></div>
+          <div class="tpl"><div class="pv"><div class="h" style="width:38%"></div><div class="l" style="width:95%"></div><div class="l" style="width:70%"></div><div class="l" style="width:82%"></div></div><div class="cap"><b>Bug Fix Notice</b><span class="tag" style="margin-left:auto">Product</span></div></div>
+          <div class="tpl"><div class="pv"><div class="h" style="width:55%;background:var(--good)"></div><div class="im" style="height:56px">🎁 offer</div></div><div class="cap"><b>Promotion</b><span class="tag" style="margin-left:auto">Marketing</span></div></div>
+          <div class="tpl"><div class="pv"><div class="h" style="width:48%"></div><div class="l" style="width:88%"></div><div class="l" style="width:64%"></div></div><div class="cap"><b>Newsletter</b><span class="tag" style="margin-left:auto">Marketing</span></div></div>
+          <div class="tpl"><div class="pv"><div class="h" style="width:44%"></div><div class="im">👋 welcome</div></div><div class="cap"><b>Welcome</b><span class="tag" style="margin-left:auto">Success</span></div></div>
+          <div class="tpl"><div class="pv"><div class="h" style="width:36%;background:var(--warn)"></div><div class="l" style="width:72%"></div><div class="l" style="width:84%"></div></div><div class="cap"><b>Renewal Reminder</b><span class="tag" style="margin-left:auto">Sales</span></div></div>
+        </div>
+      </section>
+
+      <!-- AUTOMATIONS -->
+      <section class="view" id="automations">
+        <div class="sec"><h2>Welcome Series</h2><span class="pill good" style="margin-left:auto">Active</span></div>
+        <div class="g2">
+          <div class="card pad"><div class="flow">
+            <div class="step"><div class="rail"><div class="node">▶</div><div class="line"></div></div><div class="body"><b>Trigger — New client signs up</b><small>Added to Innovate Solution</small></div></div>
+            <div class="step"><div class="rail"><div class="node">1</div><div class="line"></div></div><div class="body"><b>Send · Welcome email</b><small>Day 0 · open 63%</small></div></div>
+            <div class="step wait"><div class="rail"><div class="node">⏱</div><div class="line"></div></div><div class="body"><b>Wait 2 days</b></div></div>
+            <div class="step"><div class="rail"><div class="node">2</div><div class="line"></div></div><div class="body"><b>Send · Getting started tips</b><small>Day 2 · open 47%</small></div></div>
+            <div class="step wait"><div class="rail"><div class="node">⏱</div><div class="line"></div></div><div class="body"><b>Wait 3 days</b></div></div>
+            <div class="step"><div class="rail"><div class="node">3</div></div><div class="body"><b>Send · Explore features</b><small>Day 5 · open 39%</small></div></div>
+          </div></div>
+          <div class="card pad"><div class="sec"><h2>All automations</h2></div>
+            <div class="auth" style="border-top:none"><div class="i" style="background:var(--good-weak);color:var(--good)">▶</div><div><b>Renewal Reminder</b><small>7 days before expiry</small></div><span class="pill good np" style="margin-left:auto">Active</span></div>
+            <div class="auth"><div class="i" style="background:var(--good-weak);color:var(--good)">▶</div><div><b>Trial Follow-up</b><small>Day 3 of trial</small></div><span class="pill good np" style="margin-left:auto">Active</span></div>
+            <div class="auth"><div class="i" style="background:var(--surface-3);color:var(--muted)">‖</div><div><b>Win-back</b><small>Inactive 90 days</small></div><span class="pill neu np" style="margin-left:auto">Paused</span></div>
+            <button class="btn ghost" style="width:100%;justify-content:center;margin-top:12px">＋ New automation</button></div>
+        </div>
+      </section>
+
+      <!-- ANALYTICS -->
+      <section class="view" id="analytics">
+        <div class="stats"><div class="tile"><div class="l">Delivered</div><div class="r"><div class="v num">98.1%</div></div><div class="d up">↑ 0.4%</div></div>
+          <div class="tile"><div class="l">Avg. open</div><div class="r"><div class="v num">44.2%</div></div><div class="d up">↑ 2.1%</div></div>
+          <div class="tile"><div class="l">Avg. click</div><div class="r"><div class="v num">11.3%</div></div><div class="d down">↓ 0.6%</div></div>
+          <div class="tile"><div class="l">Unsub rate</div><div class="r"><div class="v num">0.21%</div></div><div class="d"><span class="pill good np" style="padding:1px 8px">Low</span></div></div></div>
+        <div class="g2b">
+          <div class="card pad"><div class="sec"><h2>Opens by category</h2></div><div class="chartwrap"><svg class="chart" id="barChart" viewBox="0 0 460 230"></svg></div></div>
+          <div class="card pad"><div class="sec"><h2>Delivery breakdown</h2></div><div style="display:flex;gap:26px;justify-content:center;align-items:center;padding:6px 0"><svg id="donut" width="150" height="150" viewBox="0 0 42 42"></svg><div style="display:flex;flex-direction:column;gap:9px;font-size:13px"><span><i class="leg" style="background:var(--good)"></i> Delivered 98.1%</span><span><i class="leg" style="background:var(--warn)"></i> Bounced 1.5%</span><span><i class="leg" style="background:var(--crit)"></i> Complaint 0.04%</span></div></div></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="view" id="settings">
+        <div class="g2b">
+          <div class="card pad"><div class="sec"><h2>Sender identities</h2></div>
+            <div class="auth" style="border-top:none"><div class="i" style="background:var(--accent-weak);color:var(--accent)">@</div><div><b>news.innovatesolution.com</b><small>Marketing · SPF · DKIM · DMARC</small></div><span class="pill good np" style="margin-left:auto">Good</span></div>
+            <div class="auth"><div class="i" style="background:var(--accent-weak);color:var(--accent)">@</div><div><b>mail.innovatesolution.com</b><small>Transactional</small></div><span class="pill good np" style="margin-left:auto">Good</span></div>
+            <div class="auth"><div class="i" style="background:var(--warn-weak);color:var(--warn)">@</div><div><b>news.tripgic.com</b><small>Warming up</small></div><span class="pill warn np" style="margin-left:auto">Warming</span></div></div>
+          <div class="card pad"><div class="sec"><h2>Teams &amp; roles</h2></div>
+            <table><tbody>
+              <tr><td class="cn">Org Admin</td><td class="muted">Full access, all brands</td></tr>
+              <tr><td class="cn">Brand Admin</td><td class="muted">Manage one brand</td></tr>
+              <tr><td class="cn">Team Manager</td><td class="muted">Approve &amp; send</td></tr>
+              <tr><td class="cn">Editor</td><td class="muted">Create, needs approval</td></tr>
+              <tr><td class="cn">Analyst</td><td class="muted">View reports only</td></tr>
+            </tbody></table></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+  const BRANDS=[["Innovate Solution","#5847eb","I"],["Tripgic","#0f9d94","T"],["Tripmargin","#d4652b","T"]];
+  let bi=0;
+  function toggleWs(){document.getElementById('ws').classList.toggle('open');}
+  function pickBrand(i){bi=i;const[n,c,l]=BRANDS[i];document.getElementById('wn').innerHTML=n+'<small>Inno Travel Tech</small>';
+    const lg=document.getElementById('wl');lg.textContent=l;lg.style.background='linear-gradient(140deg,'+c+',var(--accent-2))';
+    document.documentElement.style.setProperty('--accent',c);document.getElementById('cb').textContent=n;
+    document.querySelectorAll('.ws-o').forEach((o,k)=>o.classList.toggle('sel',k===i));document.getElementById('ws').classList.remove('open');drawAll();}
+  document.addEventListener('click',e=>{if(!e.target.closest('#ws'))document.getElementById('ws').classList.remove('open');});
+
+  const T={dashboard:'Dashboard',campaigns:'Campaigns',contacts:'Contacts',audiences:'Audiences',templates:'Templates',automations:'Automations',analytics:'Analytics',settings:'Settings'};
+  function qNav(i){return document.querySelectorAll('.nav')[i];}
+  function go(id,el){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.getElementById(id).classList.add('active');
+    if(el){document.querySelectorAll('.nav').forEach(n=>n.classList.remove('active'));el.classList.add('active');}
+    document.getElementById('pt').textContent=T[id];document.getElementById('cv2').textContent=T[id];window.scrollTo(0,0);drawAll();}
+  function toggleTheme(){const r=document.documentElement;const cur=r.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');r.setAttribute('data-theme',cur==='dark'?'light':'dark');setTimeout(drawAll,20);}
+
+  function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+  const SENT=[210,240,230,280,300,290,330,360,350,400,420,410,460,500,480,520,560,540,590,610,600,640,680,700,690,720,760,780,800,812];
+  const OPEN=SENT.map(v=>Math.round(v*0.45));
+  function drawLine(){const svg=document.getElementById('lineChart');if(!svg)return;const W=720,H=210,pad=8,max=Math.max(...SENT)*1.12;
+    const x=i=>pad+i*((W-2*pad)/(SENT.length-1)),y=v=>H-pad-(v/max)*(H-2*pad-6);const acc=css('--accent'),good=css('--good'),line=css('--border');
+    const path=d=>d.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');
+    let grid='';for(let g=0;g<=3;g++){const gy=pad+g*((H-2*pad)/3);grid+=`<line x1="${pad}" y1="${gy}" x2="${W-pad}" y2="${gy}" stroke="${line}"/>`;}
+    svg.innerHTML=`<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${acc}" stop-opacity=".15"/><stop offset="1" stop-color="${acc}" stop-opacity="0"/></linearGradient></defs>${grid}<path d="${path(SENT)} L ${x(29)} ${H-pad} L ${x(0)} ${H-pad} Z" fill="url(#g1)"/><path d="${path(SENT)}" fill="none" stroke="${acc}" stroke-width="2.4" stroke-linejoin="round"/><path d="${path(OPEN)}" fill="none" stroke="${good}" stroke-width="2.4" stroke-linejoin="round"/><circle cx="${x(29)}" cy="${y(SENT[29])}" r="3.5" fill="${acc}"/><circle cx="${x(29)}" cy="${y(OPEN[29])}" r="3.5" fill="${good}"/>`;}
+  function drawBar(){const svg=document.getElementById('barChart');if(!svg)return;const data=[['New feature',48],['Bug fix',51],['Update',36],['Marketing',38],['Lifecycle',63]];
+    const W=460,H=230,pad=28,bw=42,gap=(W-2*pad-bw*data.length)/(data.length-1),max=70,acc=css('--accent'),line=css('--border'),muted=css('--muted');let s='';
+    data.forEach((d,i)=>{const h=(d[1]/max)*(H-2*pad),bx=pad+i*(bw+gap),by=H-pad-h;s+=`<rect x="${bx}" y="${by}" width="${bw}" height="${h}" rx="5" fill="${acc}"/><text x="${bx+bw/2}" y="${by-6}" text-anchor="middle" font-size="11.5" font-weight="600" fill="${muted}">${d[1]}%</text><text x="${bx+bw/2}" y="${H-pad+15}" text-anchor="middle" font-size="10" fill="${muted}">${d[0]}</text>`;});
+    svg.innerHTML=`<line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" stroke="${line}"/>${s}`;}
+  function drawDonut(){const svg=document.getElementById('donut');if(!svg)return;const good=css('--good'),warn=css('--warn'),crit=css('--crit'),surf=css('--surface-3');
+    const seg=[[98.1,good],[1.5,warn],[0.4,crit]];let off=25,out='';seg.forEach(s=>{out+=`<circle cx="21" cy="21" r="15.9" fill="transparent" stroke="${s[1]}" stroke-width="5.5" stroke-dasharray="${s[0]} ${100-s[0]}" stroke-dashoffset="${off}"/>`;off=(off-s[0]+100)%100;});
+    svg.innerHTML=`<circle cx="21" cy="21" r="15.9" fill="transparent" stroke="${surf}" stroke-width="5.5"/>${out}<text x="21" y="22" text-anchor="middle" font-size="6" font-weight="700" fill="${css('--text')}">98%</text>`;}
+  function drawSparks(){document.querySelectorAll('canvas[data-s]').forEach(cv=>{const d={a:[30,32,31,34,36,35,38,40,42,45],b:[20,24,22,28,30,34,33,38,42,46],c:[40,41,39,43,42,44,43,45,44,46]}[cv.dataset.s];
+    const ctx=cv.getContext('2d'),W=cv.width,H=cv.height;ctx.clearRect(0,0,W,H);const mx=Math.max(...d),mn=Math.min(...d);
+    const x=i=>i*(W/(d.length-1)),y=v=>H-2-((v-mn)/(mx-mn||1))*(H-6);ctx.beginPath();d.forEach((v,i)=>{i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v));});
+    ctx.strokeStyle=css('--accent');ctx.lineWidth=1.8;ctx.lineJoin='round';ctx.stroke();ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.closePath();ctx.fillStyle=css('--accent-weak');ctx.fill();});}
+  function drawAll(){drawLine();drawBar();drawDonut();drawSparks();document.querySelectorAll('.leg').forEach(e=>{e.style.width='9px';e.style.height='9px';e.style.borderRadius='3px';e.style.display='inline-block';e.style.marginRight='7px';e.style.verticalAlign='middle';});}
+  drawAll();window.addEventListener('resize',drawAll);
+</script>

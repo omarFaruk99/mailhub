@@ -66,16 +66,13 @@ company wants to follow proven big-company UX patterns. Accent/font/spacing are 
 to tune later (tokens in `frontend/src/app/globals.css`).
 
 ### Concept demos (static mockups — reference for future screens)
-Built during design exploration. **Demo #1 (Loops) is the chosen/liked direction** —
-use it as the visual reference when building new screens (filters, templates,
-automations, analytics, etc.):
+Saved permanently in **`design/`** (open the .html in a browser). **Demo #1 (Loops)
+is the chosen/liked direction** — match new screens to it.
 
-- ⭐ **#1 Loops style (CHOSEN)** — light, calm, left sidebar, violet accent:
-  https://claude.ai/code/artifact/22cbbb58-9b24-45ae-a449-76736b44145c
-- #2 Resend style (dark, top-nav) — not chosen, kept for reference:
-  https://claude.ai/code/artifact/df55b572-4a4b-4324-8141-08cac9d559c1
-- #3 Customer.io/Loops (polished sidebar + sparklines) — reference:
-  https://claude.ai/code/artifact/54bcd349-6ee7-4fce-b212-60c808d090c5
+- ⭐ **#1 Loops (CHOSEN)** → `design/1-loops-concept.html`
+  · live: https://claude.ai/code/artifact/69b3581b-2b59-43e2-8eb6-2e3b45d8951e
+- #2 Resend (dark, top-nav) → `design/2-resend-concept.html`
+- #3 Customer.io/Loops (polished) → `design/3-customerio-loops-concept.html`
 
 These demos show the **full app vision** (with static data) incl. screens not built
 yet — dashboard chart/deliverability, audiences, templates, automations, analytics,
