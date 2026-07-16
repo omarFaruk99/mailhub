@@ -1,0 +1,90 @@
+// Prisma schema — this describes our database tables.
+// The database URL lives in prisma.config.ts (Prisma 7 rule).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// A brand = one product with its own clients & sender identity.
+model Brand {
+  id        String    @id @default(uuid())
+  name      String
+  domain    String    @unique
+  createdAt DateTime  @default(now())
+
+  contacts     Contact[]
+  campaigns    Campaign[]
+  suppressions Suppression[]
+}
+
+// A contact = one client of a brand.
+model Contact {
+  id        String   @id @default(uuid())
+  email     String
+  name      String?
+  country   String?
+  plan      String?  // e.g. Paid / Trial / Free
+  status    String   @default("subscribed") // subscribed | unsubscribed | bounced
+  createdAt DateTime @default(now())
+
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id])
+
+  recipients CampaignRecipient[]
+
+  // RULE: one email = one contact, per brand (no duplicates within a brand).
+  @@unique([brandId, email])
+}
+
+// A campaign = one email blast for a brand.
+model Campaign {
+  id        String   @id @default(uuid())
+  name      String
+  category  String   // Product updates | Marketing/Offers | Tips & Onboarding | Transactional
+  subject   String
+  html      String
+  status    String   @default("draft") // draft | sent
+  createdAt DateTime @default(now())
+
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id])
+
+  recipients CampaignRecipient[]
+}
+
+// One row per (campaign, contact) that was sent — gives exactly-once + history.
+model CampaignRecipient {
+  id         String    @id @default(uuid())
+  email      String
+  status     String    @default("sent") // sent | failed
+  messageId  String?
+  sentAt     DateTime  @default(now())
+  openedAt   DateTime? // set when the tracking pixel loads
+  clickedAt  DateTime? // set when a tracked link is clicked
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id])
+
+  // RULE: exactly-once — a contact gets a given campaign only once.
+  @@unique([campaignId, contactId])
+}
+
+// Suppression = emails we must NOT send to (per brand).
+model Suppression {
+  id        String   @id @default(uuid())
+  email     String
+  reason    String   // unsubscribe | bounce | complaint
+  createdAt DateTime @default(now())
+
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id])
+
+  @@unique([brandId, email])
+}
