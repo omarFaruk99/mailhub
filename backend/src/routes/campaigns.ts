@@ -50,10 +50,24 @@ router.get("/campaigns/:campaignId/recipients", async (req, res) => {
 });
 
 // ---- Send a campaign (broadcast with filter) ----
-// Optional filter in body: { plan, country }
+// Which contact types each category is sent to BY DEFAULT (when the caller
+// does not pass includeTypes). This is the safe server-side rule; the UI
+// mirrors it to pre-check boxes, but the user can adjust and send its own list.
+const CONTACT_TYPES = ["client", "prospect", "internal"] as const;
+// Authoritative rule. Frontend `defaultTypes` (campaigns/[id]/page.tsx) mirrors
+// this to pre-check boxes — keep the two in sync.
+function defaultTypesForCategory(category: string): string[] {
+  if (category === "Marketing/Offers") return ["client", "prospect"];
+  if (category === "Product updates") return ["client", "prospect", "internal"]; // everyone
+  return ["client"]; // Tips / Transactional: clients by default
+}
+
+// Optional filter in body: { plan, country, company, includeTypes }
 const filterSchema = z.object({
   plan: z.string().optional(),
   country: z.string().optional(),
+  company: z.string().optional(),
+  includeTypes: z.array(z.enum(CONTACT_TYPES)).optional(),
 });
 
 router.post("/campaigns/:campaignId/send", async (req, res) => {
@@ -62,6 +76,15 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
 
   const campaign = await prisma.campaign.findUnique({ where: { id: req.params.campaignId } });
   if (!campaign) return res.status(404).json({ error: "campaign not found" });
+
+  // Which contact types receive this send.
+  const includeTypes =
+    filter.data.includeTypes && filter.data.includeTypes.length > 0
+      ? filter.data.includeTypes
+      : defaultTypesForCategory(campaign.category);
+
+  // Company filter: trim + case-insensitive so "abc travel" matches "ABC Travel".
+  const companyFilter = filter.data.company?.trim();
 
   // 1) Suppressed emails for this brand (unsubscribe/bounce/complaint).
   const suppressed = await prisma.suppression.findMany({
@@ -75,8 +98,10 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
     where: {
       brandId: campaign.brandId,
       status: "subscribed",
+      type: { in: includeTypes },
       ...(filter.data.plan ? { plan: filter.data.plan } : {}),
       ...(filter.data.country ? { country: filter.data.country } : {}),
+      ...(companyFilter ? { company: { equals: companyFilter, mode: "insensitive" as const } } : {}),
     },
   });
 
@@ -147,7 +172,7 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
 
   await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "sent" } });
 
-  res.json({ matched: contacts.length, sent, skippedSuppressed, skippedAlready, failed });
+  res.json({ matched: contacts.length, sent, skippedSuppressed, skippedAlready, failed, includeTypes });
 });
 
 // ---- Unsubscribe (GET = user clicks link; POST = Gmail one-click) ----

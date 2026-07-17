@@ -271,6 +271,10 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 - **Marketing ও transactional আলাদা subdomain** থেকে পাঠান।
 - **Bounce < ৫%**, **complaint < ০.১%** রাখুন; নইলে SES বন্ধ করতে পারে।
 - Contact ডুপ্লিকেট নয় (প্রতি brand-এ এক ইমেইল = এক record)।
+- **মালিকের সিদ্ধান্ত — consent gate নেই:** মালিকের দেওয়া লিস্টে (client/prospect/staff)
+  আগে অনুমতি নেওয়ার ধাপ ছাড়াই মেইল পাঠানো হবে (import = subscribed)। নিরাপত্তা আসবে
+  unsubscribe + suppression + **auto-pause** থেকে, "কাকে পাঠাব" আটকে নয়। (সেরা চর্চা
+  হলো শুধু consented লিস্ট — এটা মালিকের স্পষ্ট override, তাই guardrail কড়া রাখতে হবে।)
 - Campaign type ছোট রাখুন (৫–৭টা)।
 - এখন **dedicated IP লাগবে না** — SES shared IP দিয়ে শুরু (দিনে ১ লাখ+ নিয়মিত হলে ভাবুন)।
 
@@ -287,7 +291,10 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 - **Brand** — product/brand + sender identity (domain, DKIM)
 - **Team** — brand-এর ভেতরের team
 - **User** + **Role** — RBAC
-- **Contact** — এক ইমেইল = এক record (প্রতি brand)
+- **Contact** — এক ইমেইল = এক record (প্রতি brand)। ফিল্ড: `type`
+  (`client`/`prospect`/`internal` — internal = নিজের কলিগ), `company` (বাইরের
+  কোম্পানির নাম, শুধু filter-এর জন্য; internal/individual-এ খালি), country, plan, status।
+  আলাদা Company entity নেই — `company` শুধু একটা filter field।
 - **Tag**, **Segment** — ভাগ ও filter
 - **Template** — team library + brand kit
 - **Campaign** — type, filter, approval status

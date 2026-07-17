@@ -31,11 +31,16 @@ router.get("/brands", async (_req, res) => {
 });
 
 // ---- Contacts (inside a brand) ----
+// Allowed contact types. internal = our own colleagues.
+const CONTACT_TYPES = ["client", "prospect", "internal"] as const;
+
 const contactSchema = z.object({
   email: z.email(),
   name: z.string().optional(),
   country: z.string().optional(),
   plan: z.string().optional(),
+  type: z.enum(CONTACT_TYPES).optional(),
+  company: z.string().optional(),
 });
 
 // Add one contact
@@ -43,9 +48,23 @@ router.post("/brands/:brandId/contacts", async (req, res) => {
   const parsed = contactSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const email = parsed.data.email.trim().toLowerCase();
+  // Store blank optional fields as null (not ""), same as the CSV importer.
+  const clean = (s?: string) => {
+    const t = s?.trim();
+    return t ? t : null;
+  };
   try {
     const contact = await prisma.contact.create({
-      data: { ...parsed.data, email, brandId: req.params.brandId },
+      data: {
+        brandId: req.params.brandId,
+        email,
+        name: clean(parsed.data.name),
+        country: clean(parsed.data.country),
+        plan: clean(parsed.data.plan),
+        type: parsed.data.type ?? "client",
+        // internal (our colleagues) never carry a company.
+        company: parsed.data.type === "internal" ? null : clean(parsed.data.company),
+      },
     });
     res.status(201).json(contact);
   } catch (e: any) {
@@ -64,8 +83,17 @@ router.get("/brands/:brandId/contacts", async (req, res) => {
   res.json(contacts);
 });
 
+// List suppressed emails of a brand (used e.g. for an accurate send preview).
+router.get("/brands/:brandId/suppressions", async (req, res) => {
+  const rows = await prisma.suppression.findMany({
+    where: { brandId: req.params.brandId },
+    select: { email: true, reason: true },
+  });
+  res.json(rows);
+});
+
 // Import many contacts from a CSV file (field name: "file")
-// Expected columns: email, name, country, plan
+// Expected columns: email, name, country, plan, type, company
 router.post("/brands/:brandId/contacts/import", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "no CSV file uploaded (form field 'file')" });
 
@@ -76,13 +104,21 @@ router.post("/brands/:brandId/contacts/import", upload.single("file"), async (re
   const brandId = String(req.params.brandId);
   const data = rows
     .filter((r) => r.email && r.email.trim())
-    .map((r) => ({
-      brandId,
-      email: r.email.trim().toLowerCase(),
-      name: r.name?.trim() || null,
-      country: r.country?.trim() || null,
-      plan: r.plan?.trim() || null,
-    }));
+    .map((r) => {
+      // Only accept a known type; anything else falls back to "client".
+      const t = r.type?.trim().toLowerCase();
+      const type = (CONTACT_TYPES as readonly string[]).includes(t) ? t : "client";
+      return {
+        brandId,
+        email: r.email.trim().toLowerCase(),
+        name: r.name?.trim() || null,
+        country: r.country?.trim() || null,
+        plan: r.plan?.trim() || null,
+        type,
+        // internal (our colleagues) never carry a company.
+        company: type === "internal" ? null : r.company?.trim() || null,
+      };
+    });
 
   // skipDuplicates: an email already in this brand is skipped (no duplicates).
   const result = await prisma.contact.createMany({ data, skipDuplicates: true });

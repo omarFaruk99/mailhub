@@ -2,12 +2,15 @@
 export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export type Brand = { id: string; name: string; domain: string; createdAt: string };
+export type ContactType = "client" | "prospect" | "internal";
 export type Contact = {
   id: string;
   email: string;
   name?: string | null;
   country?: string | null;
   plan?: string | null;
+  type: ContactType;
+  company?: string | null;
   status: string;
   createdAt: string;
 };
@@ -52,6 +55,8 @@ export const api = {
     req<Brand>("/brands", { method: "POST", body: JSON.stringify(b) }),
 
   contacts: (brandId: string) => req<Contact[]>(`/brands/${brandId}/contacts`),
+  suppressions: (brandId: string) =>
+    req<{ email: string; reason: string }[]>(`/brands/${brandId}/suppressions`),
   addContact: (brandId: string, c: Partial<Contact>) =>
     req<Contact>(`/brands/${brandId}/contacts`, { method: "POST", body: JSON.stringify(c) }),
   importCsv: async (brandId: string, file: File) => {
@@ -65,8 +70,11 @@ export const api = {
   campaigns: (brandId: string) => req<Campaign[]>(`/brands/${brandId}/campaigns`),
   createCampaign: (brandId: string, c: Omit<Campaign, "id" | "status" | "createdAt">) =>
     req<Campaign>(`/brands/${brandId}/campaigns`, { method: "POST", body: JSON.stringify(c) }),
-  sendCampaign: (id: string, filter: { plan?: string; country?: string }) =>
-    req<{ matched: number; sent: number; skippedSuppressed: number; skippedAlready: number; failed: number }>(
+  sendCampaign: (
+    id: string,
+    filter: { plan?: string; country?: string; company?: string; includeTypes?: ContactType[] }
+  ) =>
+    req<{ matched: number; sent: number; skippedSuppressed: number; skippedAlready: number; failed: number; includeTypes: ContactType[] }>(
       `/campaigns/${id}/send`,
       { method: "POST", body: JSON.stringify(filter) }
     ),

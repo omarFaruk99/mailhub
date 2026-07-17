@@ -11,12 +11,37 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Upload, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Chip } from "@/components/ui/chip";
+import type { ContactType } from "@/lib/api";
+
+// Contact type options + how each looks as a small badge.
+const TYPES: { value: ContactType; label: string }[] = [
+  { value: "client", label: "Client" },
+  { value: "prospect", label: "Prospect" },
+  { value: "internal", label: "Internal" },
+];
+const typeStyle: Record<string, string> = {
+  client: "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300",
+  prospect: "bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300",
+  internal: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
+};
+function TypeBadge({ type }: { type: string }) {
+  return (
+    <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize", typeStyle[type] || "bg-muted text-muted-foreground")}>
+      {type}
+    </span>
+  );
+}
 
 export default function ContactsPage() {
   const { brand } = useBrand();
@@ -24,7 +49,9 @@ export default function ContactsPage() {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ email: "", name: "", plan: "", country: "" });
+  const emptyForm = { email: "", name: "", plan: "", country: "", type: "client" as ContactType, company: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [typeFilter, setTypeFilter] = useState<ContactType | "all">("all");
 
   const contacts = useQuery({ queryKey: ["contacts", brandId], queryFn: () => api.contacts(brandId!), enabled: !!brandId });
 
@@ -33,11 +60,13 @@ export default function ContactsPage() {
     onSuccess: () => {
       toast.success("Contact added");
       setOpen(false);
-      setForm({ email: "", name: "", plan: "", country: "" });
+      setForm(emptyForm);
       qc.invalidateQueries({ queryKey: ["contacts", brandId] });
     },
     onError: (e: Error) => toast.error("Could not add: " + e.message),
   });
+
+  const shown = (contacts.data ?? []).filter((c) => typeFilter === "all" || c.type === typeFilter);
 
   const importMut = useMutation({
     mutationFn: (file: File) => api.importCsv(brandId!, file),
@@ -70,6 +99,28 @@ export default function ContactsPage() {
                   <Field label="Email"><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@example.com" /></Field>
                   <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
                   <div className="grid grid-cols-2 gap-4">
+                    <Field label="Type">
+                      <Select
+                        value={form.type}
+                        onValueChange={(v) => {
+                          const t = (v ?? form.type) as ContactType;
+                          // internal (our colleagues) never carry a company → clear it.
+                          setForm({ ...form, type: t, company: t === "internal" ? "" : form.company });
+                        }}
+                      >
+                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Company">
+                      <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })}
+                        placeholder={form.type === "internal" ? "— (leave blank)" : "e.g. ABC Travel"}
+                        disabled={form.type === "internal"} />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <Field label="Plan"><Input value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} placeholder="Paid / Trial" /></Field>
                     <Field label="Country"><Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} /></Field>
                   </div>
@@ -83,7 +134,19 @@ export default function ContactsPage() {
         }
       />
 
-      <div className="w-full max-w-6xl p-6">
+      <div className="flex w-full max-w-6xl flex-col gap-4 p-6">
+        {/* Type filter chips */}
+        <div className="flex flex-wrap gap-2">
+          <Chip active={typeFilter === "all"} onClick={() => setTypeFilter("all")}>
+            All ({contacts.data?.length ?? 0})
+          </Chip>
+          {TYPES.map((t) => (
+            <Chip key={t.value} active={typeFilter === t.value} onClick={() => setTypeFilter(t.value)}>
+              {t.label} ({(contacts.data ?? []).filter((c) => c.type === t.value).length})
+            </Chip>
+          ))}
+        </div>
+
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -91,25 +154,29 @@ export default function ContactsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Company</TableHead>
                   <TableHead>Plan</TableHead>
                   <TableHead>Country</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(contacts.data ?? []).map((c) => (
+                {shown.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">{c.name || "—"}</TableCell>
                     <TableCell className="text-muted-foreground">{c.email}</TableCell>
+                    <TableCell><TypeBadge type={c.type} /></TableCell>
+                    <TableCell>{c.company || "—"}</TableCell>
                     <TableCell>{c.plan || "—"}</TableCell>
                     <TableCell>{c.country || "—"}</TableCell>
                     <TableCell><StatusBadge status={c.status} /></TableCell>
                   </TableRow>
                 ))}
-                {contacts.data?.length === 0 && (
+                {shown.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                      No contacts yet. Add one or import a CSV.
+                    <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                      {contacts.data?.length ? "No contacts of this type." : "No contacts yet. Add one or import a CSV."}
                     </TableCell>
                   </TableRow>
                 )}

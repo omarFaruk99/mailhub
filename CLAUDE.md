@@ -105,6 +105,17 @@ guides the user through each manual task.
 - **Multi-brand**: each brand = own domain, own client list, own reputation, own
   sender identity. Brands are isolated. One brand's problem never affects another.
 - **One email = one contact, per brand** (no duplicates within a brand).
+- **Contact `type`**: `client` | `prospect` | `internal` (internal = our own
+  colleagues). Optional **`company`** field = external company name, for filtering
+  only (e.g. "send to ABC Travel's people"); blank for internal/individuals. It is a
+  plain filter field — **not** a separate Company entity/hierarchy (that heavy version
+  is intentionally out of scope). Internal contacts live inside each brand for now
+  (`type=internal`); a shared org-level staff list is deferred to multi-brand (Phase 3).
+- **Category → audience defaults** (sender can override with checkboxes at send time):
+  Marketing/Offers → client + prospect · **Product updates → all (client + prospect +
+  internal)** · Tips / Transactional → client. Rationale: staff/prospects should see
+  new features (support needs to know them; a feature can convert a prospect).
+  Internal is never in the default marketing audience.
 - Unsubscribe & suppression are **per brand**.
 - Inside a brand, multiple **teams** (Product, Marketing, Support, Sales...) share
   the client list; separated by team/type/tag. Teams are not fixed — add as needed.
@@ -118,7 +129,12 @@ guides the user through each manual task.
 
 ## Email deliverability rules (never break these)
 
-- Only email people who **consented**. Never email purchased/unconsented lists.
+- **Business decision (owner):** we email the owner-provided lists (clients,
+  prospects, staff) **without a "consent gate"** — importing a contact = subscribed;
+  there is NO pre-send opt-in/confirmation step. Deliverability is protected instead by
+  unsubscribe + suppression + auto-pause (below), not by gating who we send to.
+  (Best practice is consented lists only; this is an explicit owner override — keep the
+  guardrails tight.)
 - Every email needs an **unsubscribe link + one-click unsubscribe header (RFC 8058)**.
 - Set up **SPF + DKIM + DMARC** per sending domain; warm up new domains.
 - Keep **bounce < 5%**, **complaint < 0.1%**. Add **auto-pause** if thresholds spike.
