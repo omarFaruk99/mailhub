@@ -59,6 +59,12 @@ Personal AWS, region **ap-southeast-1**, **sandbox**. Sender `no-reply@omarsec.c
 `shuvon19952035@gmail.com`. Full detail + DevOps setup guide: `_TEMP-email-notes.md`.
 
 ## How far we can go WITHOUT SES production access + deploy (read this)
+
+**Owner's decision (strategy):** build **everything that is possible with personal
+credentials** first (all features + self-testing on verified emails). Do **SES
+production access + deploy LAST**, only at real launch when we must email actual
+customers. Sequence every plan this way — feature work first, prod/deploy at the end.
+
 Current setup = **personal AWS SES in sandbox** + local dev. That is enough to
 **build and self-test everything** — do NOT block feature work waiting on prod/deploy.
 
