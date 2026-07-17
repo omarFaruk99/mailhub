@@ -173,6 +173,10 @@ guides the user through each manual task.
 
 ## Workflow notes
 
+- **Branching rule:** for a **big feature**, ALWAYS create a branch first
+  (e.g. `claude/<feature-name>`), build & test there, then merge to `main` via PR once
+  it works (so main never breaks; a bad attempt is just a deleted branch). Only
+  **small changes** (typo, doc, one-line fix) go straight to `main`.
 - Local dev → GitHub push (never commit `.env`/secrets) → pull on server →
   `docker-compose up` → run migrations → nginx + SSL.
 - Claude handles setup (docker-compose, migrations, nginx, SSL, backups). The user
