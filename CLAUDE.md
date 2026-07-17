@@ -112,9 +112,10 @@ guides the user through each manual task.
   is intentionally out of scope). Internal contacts live inside each brand for now
   (`type=internal`); a shared org-level staff list is deferred to multi-brand (Phase 3).
 - **Category → audience defaults** (sender can override with checkboxes at send time):
-  Marketing/Offers → client + prospect · Product updates / Tips / Transactional →
-  client. Prospect or internal can be opted-in per send (e.g. a product update that
-  might convert a prospect). Internal is never in the default marketing audience.
+  Marketing/Offers → client + prospect · **Product updates → all (client + prospect +
+  internal)** · Tips / Transactional → client. Rationale: staff/prospects should see
+  new features (support needs to know them; a feature can convert a prospect).
+  Internal is never in the default marketing audience.
 - Unsubscribe & suppression are **per brand**.
 - Inside a brand, multiple **teams** (Product, Marketing, Support, Sales...) share
   the client list; separated by team/type/tag. Teams are not fixed — add as needed.

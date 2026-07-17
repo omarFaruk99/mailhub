@@ -58,7 +58,8 @@ const CONTACT_TYPES = ["client", "prospect", "internal"] as const;
 // this to pre-check boxes — keep the two in sync.
 function defaultTypesForCategory(category: string): string[] {
   if (category === "Marketing/Offers") return ["client", "prospect"];
-  return ["client"]; // Product updates / Tips / Transactional: clients by default
+  if (category === "Product updates") return ["client", "prospect", "internal"]; // everyone
+  return ["client"]; // Tips / Transactional: clients by default
 }
 
 // Optional filter in body: { plan, country, company, includeTypes }

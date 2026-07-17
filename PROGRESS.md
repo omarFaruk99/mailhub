@@ -17,9 +17,9 @@ real emails delivered via Amazon SES.
   (plan/country/**company**/**contact type**), **exactly-once**
   (unique `[campaignId, contactId]`), recipients list.
   - **Audience by type:** send accepts `includeTypes` (which contact types receive it).
-    Category defaults: **Marketing/Offers → client+prospect**; **Product updates / Tips /
-    Transactional → client** (user can opt-in prospect/internal via checkboxes).
-    `internal` = our own colleagues; never in the default marketing/product audience.
+    Category defaults: **Marketing/Offers → client+prospect**; **Product updates → all
+    (client+prospect+internal)**; **Tips / Transactional → client** (user can adjust via
+    checkboxes). `internal` = our own colleagues; never in the default marketing audience.
 - **Unsubscribe**: link + **one-click List-Unsubscribe header (RFC 8058)**; GET page + POST.
 - **Suppression**: per-brand; unsubscribe/bounce/complaint excluded from sends.
 - **SES sending**: `@aws-sdk/client-sesv2`, UTF-8, custom headers.

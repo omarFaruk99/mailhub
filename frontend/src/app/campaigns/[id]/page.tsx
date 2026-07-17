@@ -27,7 +27,9 @@ const AUDIENCE: { value: ContactType; label: string }[] = [
 // Keep in sync with backend `defaultTypesForCategory` in routes/campaigns.ts —
 // that is the authoritative rule; this only pre-checks the boxes.
 function defaultTypes(category?: string): ContactType[] {
-  return category === "Marketing/Offers" ? ["client", "prospect"] : ["client"];
+  if (category === "Marketing/Offers") return ["client", "prospect"];
+  if (category === "Product updates") return ["client", "prospect", "internal"]; // everyone
+  return ["client"];
 }
 
 export default function CampaignDetail() {
