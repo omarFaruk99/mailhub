@@ -32,6 +32,26 @@ export type Recipient = {
   clickedAt?: string | null;
   sentAt: string;
 };
+export type Template = {
+  id: string;
+  brandId: string;
+  name: string;
+  layoutKey: string;
+  subject: string;
+  fields: string; // JSON string of field values
+  html: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type TemplateInput = {
+  name: string;
+  layoutKey: string;
+  subject?: string;
+  fields?: Record<string, string>;
+  html: string;
+};
+export type FieldDef = { key: string; label: string; type: "text" | "textarea" | "url"; placeholder?: string; optional?: boolean };
+export type LayoutMeta = { key: string; label: string; description: string; fields: FieldDef[] };
 
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(API + path, {
@@ -79,4 +99,28 @@ export const api = {
       { method: "POST", body: JSON.stringify(filter) }
     ),
   recipients: (id: string) => req<Recipient[]>(`/campaigns/${id}/recipients`),
+
+  // Templates (saved email designs) — stored in the backend.
+  templates: (brandId: string) => req<Template[]>(`/brands/${brandId}/templates`),
+  createTemplate: (brandId: string, t: TemplateInput) =>
+    req<Template>(`/brands/${brandId}/templates`, { method: "POST", body: JSON.stringify(t) }),
+  updateTemplate: (id: string, t: Partial<TemplateInput>) =>
+    req<Template>(`/templates/${id}`, { method: "PUT", body: JSON.stringify(t) }),
+  deleteTemplate: (id: string) =>
+    req<{ ok: boolean }>(`/templates/${id}`, { method: "DELETE" }),
+
+  // Layouts + rendering live in the Next.js app itself (React Email), not the backend.
+  layouts: () => localReq<LayoutMeta[]>("/api/layouts"),
+  renderTemplate: (layoutKey: string, fields: Record<string, string>) =>
+    localReq<{ html: string }>("/api/render-template", {
+      method: "POST",
+      body: JSON.stringify({ layoutKey, fields }),
+    }),
 };
+
+// Same-origin fetch (Next.js route handlers), no backend base URL.
+async function localReq<T>(path: string, opts?: RequestInit): Promise<T> {
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+  return r.json();
+}

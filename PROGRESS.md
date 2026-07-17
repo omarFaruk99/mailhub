@@ -27,13 +27,20 @@ real emails delivered via Amazon SES.
   verify (`sns-validator`); dev bypass env `SNS_SKIP_VERIFY=true`.
 - **Tracking**: open pixel `/track/open`, click redirect `/track/click` → sets
   `openedAt` / `clickedAt`.
+- **Templates**: CRUD (`src/routes/templates.ts`) for saved email designs
+  (`Template` model). Fill-in-fields approach: dev-built **layouts** (React Email, in the
+  frontend) + team-filled **fields**; backend stores the rendered `html`. `{{name}}`
+  **merge tag** is replaced per recipient at send time (in `campaigns.ts`).
 - CORS enabled for the frontend.
-- Key files: `src/index.ts`, `src/routes/{brands,campaigns,email,tracking,webhooks}.ts`,
+- Key files: `src/index.ts`, `src/routes/{brands,campaigns,templates,email,tracking,webhooks}.ts`,
   `src/email/ses.ts`, `src/prisma.ts`, `prisma/schema.prisma`, `prisma.config.ts`.
 
 ### Frontend — `frontend/` (Next.js 16 + shadcn/ui + Tailwind v4 + TanStack Query)
 - Screens: **Dashboard**, **Contacts** (add + CSV import; **type dropdown + company
-  field**, type filter chips, type badge), **Campaigns** (create + list),
+  field**, type filter chips, type badge), **Templates** (fill-in-fields editor: pick a
+  layout → fill fields → **live iframe preview** → save; list/edit/delete; layouts +
+  rendering via Next.js routes `/api/layouts`, `/api/render-template` using React Email),
+  **Campaigns** (create + list; **"Start from template"** prefills subject+body),
   **Campaign detail** (send with **audience checkboxes** Client/Prospect/Internal +
   plan/company filter + live "~N people" summary + open/click stats).
 - Design: clean **Loops-style** — left sidebar (workspace switcher, search box, nav,
@@ -93,7 +100,9 @@ to email **actual customers**. Until then keep building + self-testing on verifi
   named segment + more filter fields still pending).
 - **Dashboard widgets** to match the concept: engagement chart, deliverability card,
   sparkline stat tiles. (Only add real data — don't fake metrics.)
-- **Template editor**, **Automations**, **Analytics** screen.
+- **Template editor** ✅ done (fill-in-fields + React Email). Later: image **upload**
+  button (R2), drag-and-drop, per-team folders/brand kit.
+- **Automations**, **Analytics** screen.
 - **Teams + RBAC roles**, **approval workflow** (Draft→Review→Approve→Send).
 - **Multi-brand** (brand switcher is single-brand now), **preference center**.
 - **SES production access** + SPF/DMARC + custom MAIL FROM (better inbox placement).

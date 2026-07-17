@@ -20,6 +20,27 @@ model Brand {
   contacts     Contact[]
   campaigns    Campaign[]
   suppressions Suppression[]
+  templates    Template[]
+}
+
+// A template = a saved, filled email design (a "layout" filled in with field values).
+// Layouts (the designs) live in code; a Template is one filled + named instance a team
+// member created and can reuse. `html` is the rendered result (cached for reuse/preview).
+model Template {
+  id        String   @id @default(uuid())
+  name      String
+  layoutKey String   // which code layout was used (e.g. "announcement")
+  subject   String   @default("")
+  fields    String   @default("{}") // JSON of the filled field values
+  html      String   // rendered Outlook-safe HTML (may contain {{name}} merge tags)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id])
+
+  // One template name per brand (no duplicates within a brand).
+  @@unique([brandId, name])
 }
 
 // A contact = one person of a brand (client, prospect, or internal colleague).
