@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -16,49 +16,38 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft } from "lucide-react";
 
-// Full-page template editor (used by /templates/new and /templates/[id]).
-// Left = fill-in form; right = large live preview. Save returns to the list.
+const CATEGORIES = ["Product updates", "Marketing/Offers", "Tips & Onboarding", "Transactional"];
+
+// Full-page template editor. Users pick a ready-made design (or write HTML),
+// edit the HTML, and see a live preview. Used by /templates/new and /templates/[id].
 export function TemplateEditor({ template }: { template?: Template }) {
   const { brand } = useBrand();
   const brandId = brand?.id;
   const qc = useQueryClient();
   const router = useRouter();
 
-  const layouts = useQuery({ queryKey: ["layouts"], queryFn: () => api.layouts() });
-
   const [name, setName] = useState(template?.name ?? "");
-  const [layoutKey, setLayoutKey] = useState(template?.layoutKey ?? "");
   const [subject, setSubject] = useState(template?.subject ?? "");
-  const [fields, setFields] = useState<Record<string, string>>(() => {
-    try { return template ? JSON.parse(template.fields || "{}") : {}; } catch { return {}; }
-  });
-  const [preview, setPreview] = useState(template?.html ?? "");
+  const [category, setCategory] = useState(template?.category ?? "");
+  const [html, setHtml] = useState(template?.html ?? "");
+  const [starterLabel, setStarterLabel] = useState("");
 
-  // For a new template, default to the first layout once layouts load.
-  useEffect(() => {
-    if (!layoutKey && layouts.data?.length) setLayoutKey(layouts.data[0].key);
-  }, [layouts.data, layoutKey]);
+  const starters = useQuery({ queryKey: ["starterTemplates"], queryFn: () => api.starterTemplates() });
 
-  const layoutMeta = useMemo(() => layouts.data?.find((l) => l.key === layoutKey), [layouts.data, layoutKey]);
-
-  // Live preview: re-render (debounced) when the layout or fields change.
-  useEffect(() => {
-    if (!layoutKey) return;
-    const t = setTimeout(async () => {
-      try {
-        const { html } = await api.renderTemplate(layoutKey, fields);
-        setPreview(html);
-      } catch {
-        /* ignore transient preview errors */
-      }
-    }, 400);
-    return () => clearTimeout(t);
-  }, [layoutKey, fields]);
+  // Match by label (unique) so the Select trigger shows the design name, not its key.
+  function applyStarter(label: string) {
+    const d = starters.data?.find((s) => s.label === label);
+    if (!d) return;
+    setStarterLabel(label);
+    setHtml(d.html);
+    setSubject((s) => s || d.subject);
+    setCategory((c) => c || d.category);
+    setName((n) => n || d.label);
+  }
 
   const saveMut = useMutation({
-    mutationFn: async () => {
-      const { html } = await api.renderTemplate(layoutKey, fields);
-      const payload = { name, layoutKey, subject, fields, html };
+    mutationFn: () => {
+      const payload = { name, subject, category, html };
       return template ? api.updateTemplate(template.id, payload) : api.createTemplate(brandId!, payload);
     },
     onSuccess: () => {
@@ -79,53 +68,57 @@ export function TemplateEditor({ template }: { template?: Template }) {
             <Button variant="outline" onClick={() => router.push("/templates")}>
               <ArrowLeft className="size-4" /> Back
             </Button>
-            <Button onClick={() => saveMut.mutate()} disabled={!name || !layoutKey || saveMut.isPending}>
+            <Button onClick={() => saveMut.mutate()} disabled={!name || !html || saveMut.isPending}>
               {saveMut.isPending ? "Saving…" : "Save template"}
             </Button>
           </div>
         }
       />
 
-      <div className="grid w-full flex-1 grid-cols-1 gap-6 p-6 lg:grid-cols-[minmax(0,440px)_1fr]">
-        {/* Left: fill-in form */}
+      <div className="grid w-full flex-1 grid-cols-1 gap-6 p-6 lg:grid-cols-[minmax(0,460px)_1fr]">
+        {/* Left: form */}
         <div className="flex flex-col gap-4">
+          {!template && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Start from a ready-made design (optional)</Label>
+              <Select value={starterLabel} onValueChange={(v) => { if (v) applyStarter(v); }}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Pick a design…" /></SelectTrigger>
+                <SelectContent>
+                  {(starters.data ?? []).map((d) => <SelectItem key={d.key} value={d.label}>{d.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Loads a design into the HTML box below — then edit it.</p>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label>Template name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Dark Mode Launch" />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Layout</Label>
-            <Select value={layoutKey} onValueChange={(v) => setLayoutKey(v ?? layoutKey)}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Pick a layout…" /></SelectTrigger>
+            <Label>Default category (optional)</Label>
+            <Select value={category} onValueChange={(v) => setCategory(v ?? category)}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Pick a category…" /></SelectTrigger>
               <SelectContent>
-                {(layouts.data ?? []).map((l) => <SelectItem key={l.key} value={l.key}>{l.label}</SelectItem>)}
+                {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
-            {layoutMeta && <p className="text-xs text-muted-foreground">{layoutMeta.description}</p>}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Subject</Label>
             <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="🚀 What's new" />
           </div>
-          {(layoutMeta?.fields ?? []).map((f) => (
-            <div key={f.key} className="flex flex-col gap-1.5">
-              <Label>{f.label}{f.optional ? " (optional)" : ""}</Label>
-              {f.type === "textarea" ? (
-                <Textarea rows={4} value={fields[f.key] ?? ""} placeholder={f.placeholder}
-                  onChange={(e) => setFields({ ...fields, [f.key]: e.target.value })} />
-              ) : (
-                <Input value={fields[f.key] ?? ""} placeholder={f.placeholder}
-                  onChange={(e) => setFields({ ...fields, [f.key]: e.target.value })} />
-              )}
-            </div>
-          ))}
-          <p className="text-xs text-muted-foreground">The greeting uses the recipient&apos;s name automatically.</p>
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Label>Body (HTML)</Label>
+            <Textarea value={html} onChange={(e) => setHtml(e.target.value)} placeholder="<table>…</table>"
+              className="min-h-[300px] flex-1 font-mono text-xs" />
+            <p className="text-xs text-muted-foreground">Use <code>{"{{name}}"}</code> for the recipient&apos;s name.</p>
+          </div>
         </div>
 
-        {/* Right: large live preview */}
+        {/* Right: live preview */}
         <div className="flex flex-col gap-1.5">
           <Label>Live preview</Label>
-          <iframe title="preview" srcDoc={preview} sandbox=""
+          <iframe title="preview" srcDoc={html || "<p style='font-family:sans-serif;color:#999;padding:16px'>Pick a design or write HTML to see a preview.</p>"} sandbox=""
             className="min-h-[70vh] w-full flex-1 rounded-lg border bg-white" />
         </div>
       </div>

@@ -1,18 +1,22 @@
-// Template routes: CRUD for saved, filled email designs.
-// The frontend renders layout+fields into `html` (via React Email) and sends it here;
-// the backend just stores strings — no rendering here.
+// Template routes: CRUD for saved, reusable email designs (name + HTML body).
+// Users edit the HTML with a live preview; the backend just stores strings.
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { STARTER_TEMPLATES } from "../data/starter-templates.js";
 
 const router = Router();
 
+// Ready-made starter designs (for the "start from a design" picker in the editor).
+router.get("/starter-templates", (_req, res) => {
+  res.json(STARTER_TEMPLATES.map((s) => ({ key: s.key, label: s.label, subject: s.subject, category: s.category, html: s.html })));
+});
+
 const templateSchema = z.object({
   name: z.string().min(1),
-  layoutKey: z.string().min(1),
   subject: z.string().optional(),
-  fields: z.record(z.string(), z.string()).optional(), // filled field values
-  html: z.string().min(1), // rendered HTML (may contain {{name}} merge tags)
+  category: z.string().optional(),
+  html: z.string().min(1), // may contain {{name}} merge tags
 });
 
 // Create
@@ -24,9 +28,8 @@ router.post("/brands/:brandId/templates", async (req, res) => {
       data: {
         brandId: req.params.brandId,
         name: parsed.data.name,
-        layoutKey: parsed.data.layoutKey,
         subject: parsed.data.subject ?? "",
-        fields: JSON.stringify(parsed.data.fields ?? {}),
+        category: parsed.data.category ?? "",
         html: parsed.data.html,
       },
     });
@@ -54,9 +57,8 @@ router.put("/templates/:id", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const data: Record<string, unknown> = {};
   if (parsed.data.name !== undefined) data.name = parsed.data.name;
-  if (parsed.data.layoutKey !== undefined) data.layoutKey = parsed.data.layoutKey;
   if (parsed.data.subject !== undefined) data.subject = parsed.data.subject;
-  if (parsed.data.fields !== undefined) data.fields = JSON.stringify(parsed.data.fields);
+  if (parsed.data.category !== undefined) data.category = parsed.data.category;
   if (parsed.data.html !== undefined) data.html = parsed.data.html;
   try {
     const t = await prisma.template.update({ where: { id: req.params.id }, data });

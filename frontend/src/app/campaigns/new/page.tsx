@@ -24,15 +24,22 @@ export default function NewCampaignPage() {
   const router = useRouter();
 
   const [form, setForm] = useState({ name: "", category: CATEGORIES[0], subject: "", html: "" });
-  const [templateId, setTemplateId] = useState("");
+  const [pickedName, setPickedName] = useState("");
 
   const templates = useQuery({ queryKey: ["templates", brandId], queryFn: () => api.templates(brandId!), enabled: !!brandId });
 
   // Prefill subject + body from a saved template (name stays editable).
-  function pickTemplate(id: string) {
-    setTemplateId(id);
-    const t = templates.data?.find((x) => x.id === id);
-    if (t) setForm((f) => ({ ...f, subject: t.subject || f.subject, html: t.html, name: f.name || t.name }));
+  // Select by template name (unique per brand) so the trigger shows the name, not an id.
+  function pickTemplate(name: string) {
+    setPickedName(name);
+    const t = templates.data?.find((x) => x.name === name);
+    if (t) setForm((f) => ({
+      ...f,
+      subject: t.subject || f.subject,
+      html: t.html,
+      name: f.name || t.name,
+      category: t.category || f.category,
+    }));
   }
 
   const createMut = useMutation({
@@ -71,10 +78,10 @@ export default function NewCampaignPage() {
           {(templates.data?.length ?? 0) > 0 && (
             <div className="flex flex-col gap-1.5">
               <Label>Start from template (optional)</Label>
-              <Select value={templateId} onValueChange={(v) => { if (v) pickTemplate(v); }}>
+              <Select value={pickedName} onValueChange={(v) => { if (v) pickTemplate(v); }}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="Pick a saved template…" /></SelectTrigger>
                 <SelectContent>
-                  {(templates.data ?? []).map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  {(templates.data ?? []).map((t) => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">Fills subject + body. You can still edit, or write HTML directly.</p>

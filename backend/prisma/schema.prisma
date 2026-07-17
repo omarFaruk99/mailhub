@@ -23,16 +23,17 @@ model Brand {
   templates    Template[]
 }
 
-// A template = a saved, filled email design (a "layout" filled in with field values).
-// Layouts (the designs) live in code; a Template is one filled + named instance a team
-// member created and can reuse. `html` is the rendered result (cached for reuse/preview).
+// A template = a saved, reusable email design (name + HTML body).
+// Users start from a ready-made design or write HTML, edit it with a live preview,
+// and save. `category` is the default send-category to preselect in a campaign.
+// html may contain {{name}} merge tags (replaced per recipient at send time).
 model Template {
   id        String   @id @default(uuid())
   name      String
-  layoutKey String   // which code layout was used (e.g. "announcement")
   subject   String   @default("")
-  fields    String   @default("{}") // JSON of the filled field values
-  html      String   // rendered Outlook-safe HTML (may contain {{name}} merge tags)
+  category  String   @default("") // default send category (e.g. "Product updates")
+  html      String
+  isStarter Boolean  @default(false) // true = system-seeded ready-made; false = user's own
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

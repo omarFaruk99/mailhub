@@ -36,22 +36,20 @@ export type Template = {
   id: string;
   brandId: string;
   name: string;
-  layoutKey: string;
   subject: string;
-  fields: string; // JSON string of field values
+  category: string;
   html: string;
+  isStarter: boolean;
   createdAt: string;
   updatedAt: string;
 };
 export type TemplateInput = {
   name: string;
-  layoutKey: string;
   subject?: string;
-  fields?: Record<string, string>;
+  category?: string;
   html: string;
 };
-export type FieldDef = { key: string; label: string; type: "text" | "textarea" | "url"; placeholder?: string; optional?: boolean };
-export type LayoutMeta = { key: string; label: string; description: string; fields: FieldDef[] };
+export type StarterTemplate = { key: string; label: string; subject: string; category: string; html: string };
 
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(API + path, {
@@ -108,19 +106,5 @@ export const api = {
     req<Template>(`/templates/${id}`, { method: "PUT", body: JSON.stringify(t) }),
   deleteTemplate: (id: string) =>
     req<{ ok: boolean }>(`/templates/${id}`, { method: "DELETE" }),
-
-  // Layouts + rendering live in the Next.js app itself (React Email), not the backend.
-  layouts: () => localReq<LayoutMeta[]>("/api/layouts"),
-  renderTemplate: (layoutKey: string, fields: Record<string, string>) =>
-    localReq<{ html: string }>("/api/render-template", {
-      method: "POST",
-      body: JSON.stringify({ layoutKey, fields }),
-    }),
+  starterTemplates: () => req<StarterTemplate[]>("/starter-templates"),
 };
-
-// Same-origin fetch (Next.js route handlers), no backend base URL.
-async function localReq<T>(path: string, opts?: RequestInit): Promise<T> {
-  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
-  return r.json();
-}

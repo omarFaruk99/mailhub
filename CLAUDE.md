@@ -69,7 +69,7 @@ PROGRESS.md (§ "How far we can go WITHOUT SES production access + deploy").
 | Language (front + back) | **TypeScript** |
 | DB access + migrations | **Prisma** (Prisma Studio to view data) |
 | Input validation | **Zod** |
-| Email templates → HTML | **React Email** |
+| Email templates | **Plain HTML + ready-made starter designs** (template = HTML body; users edit HTML with a live preview). React Email was tried then removed — not used. A no-code editor (drag-and-drop) is a future option. |
 | CSV import | **Papa Parse** |
 | Frontend data fetching | **TanStack Query** |
 | Code quality | **ESLint + Prettier** |
