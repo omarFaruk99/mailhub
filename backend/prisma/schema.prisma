@@ -20,6 +20,28 @@ model Brand {
   contacts     Contact[]
   campaigns    Campaign[]
   suppressions Suppression[]
+  templates    Template[]
+}
+
+// A template = a saved, reusable email design (name + HTML body).
+// Users start from a ready-made design or write HTML, edit it with a live preview,
+// and save. `category` is the default send-category to preselect in a campaign.
+// html may contain {{name}} merge tags (replaced per recipient at send time).
+model Template {
+  id        String   @id @default(uuid())
+  name      String
+  subject   String   @default("")
+  category  String   @default("") // default send category (e.g. "Product updates")
+  html      String
+  isStarter Boolean  @default(false) // true = system-seeded ready-made; false = user's own
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id])
+
+  // One template name per brand (no duplicates within a brand).
+  @@unique([brandId, name])
 }
 
 // A contact = one person of a brand (client, prospect, or internal colleague).

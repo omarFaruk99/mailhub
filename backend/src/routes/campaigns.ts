@@ -133,8 +133,16 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
     const b = base();
     const unsubUrl = `${b}/unsubscribe?b=${campaign.brandId}&c=${c.id}`;
 
+    // Merge tags: replace {{name}} with this contact's name (fallback "there").
+    // HTML-escape the value and use a function replacement so names containing
+    // <, &, ", or $ can't break the markup or the replacement pattern.
+    const escapeHtml = (s: string) =>
+      s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch] as string));
+    const safeName = escapeHtml(c.name?.trim() || "there");
+    const personalized = campaign.html.replace(/\{\{\s*name\s*\}\}/gi, () => safeName);
+
     // Click tracking: rewrite every http(s) link through /track/click.
-    let body = campaign.html.replace(
+    let body = personalized.replace(
       /href="(https?:\/\/[^"]+)"/g,
       (_m, url) => `href="${b}/track/click?r=${rec.id}&u=${encodeURIComponent(url)}"`
     );

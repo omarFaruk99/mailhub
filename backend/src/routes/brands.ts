@@ -4,6 +4,7 @@ import multer from "multer";
 import Papa from "papaparse";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { seedStarterTemplates } from "../data/starter-templates.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -19,6 +20,13 @@ router.post("/brands", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   try {
     const brand = await prisma.brand.create({ data: parsed.data });
+    // Every new brand starts with the ready-made templates in its gallery.
+    // Don't fail brand creation if seeding hiccups — just log it.
+    try {
+      await seedStarterTemplates(brand.id);
+    } catch (seedErr) {
+      console.error("seed starter templates failed for brand", brand.id, seedErr);
+    }
     res.status(201).json(brand);
   } catch (e: any) {
     if (e.code === "P2002") return res.status(409).json({ error: "domain already exists" });

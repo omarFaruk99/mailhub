@@ -27,13 +27,24 @@ real emails delivered via Amazon SES.
   verify (`sns-validator`); dev bypass env `SNS_SKIP_VERIFY=true`.
 - **Tracking**: open pixel `/track/open`, click redirect `/track/click` → sets
   `openedAt` / `clickedAt`.
+- **Templates**: CRUD (`src/routes/templates.ts`) for saved email designs
+  (`Template` model = name, subject, `category`, `html`, `isStarter`). Approach is
+  **template + HTML** (everyone edits HTML directly; no fill-in-fields/drag-drop yet).
+  **Ready-made starter designs** live in `src/data/starter-templates.ts` — served at
+  `GET /starter-templates` and **auto-seeded into every new brand** (`seedStarterTemplates`,
+  called on brand create). `{{name}}` **merge tag** is replaced per recipient at send
+  time (HTML-escaped, in `campaigns.ts`).
 - CORS enabled for the frontend.
-- Key files: `src/index.ts`, `src/routes/{brands,campaigns,email,tracking,webhooks}.ts`,
+- Key files: `src/index.ts`, `src/routes/{brands,campaigns,templates,email,tracking,webhooks}.ts`,
   `src/email/ses.ts`, `src/prisma.ts`, `prisma/schema.prisma`, `prisma.config.ts`.
 
 ### Frontend — `frontend/` (Next.js 16 + shadcn/ui + Tailwind v4 + TanStack Query)
 - Screens: **Dashboard**, **Contacts** (add + CSV import; **type dropdown + company
-  field**, type filter chips, type badge), **Campaigns** (create + list),
+  field**, type filter chips, type badge), **Templates** (list with **Starter/Yours**
+  badge + a **⋯ actions menu** (Edit/Duplicate/Delete); editor is a full **page**
+  `/templates/new` & `/templates/[id]` — HTML box + **live iframe preview** + "start from
+  a ready-made design"), **Campaigns** (create is a full **page** `/campaigns/new`;
+  **"Start from template"** prefills subject+body+category, with live preview),
   **Campaign detail** (send with **audience checkboxes** Client/Prospect/Internal +
   plan/company filter + live "~N people" summary + open/click stats).
 - Design: clean **Loops-style** — left sidebar (workspace switcher, search box, nav,
@@ -93,7 +104,10 @@ to email **actual customers**. Until then keep building + self-testing on verifi
   named segment + more filter fields still pending).
 - **Dashboard widgets** to match the concept: engagement chart, deliverability card,
   sparkline stat tiles. (Only add real data — don't fake metrics.)
-- **Template editor**, **Automations**, **Analytics** screen.
+- **Template editor** ✅ done (template + HTML; ready-made starters auto-seeded;
+  duplicate; Starter/Yours). Later: image **upload** button (R2), a no-code editor
+  (drag-and-drop / fill-in-fields), per-team folders/brand kit.
+- **Automations**, **Analytics** screen.
 - **Teams + RBAC roles**, **approval workflow** (Draft→Review→Approve→Send).
 - **Multi-brand** (brand switcher is single-brand now), **preference center**.
 - **SES production access** + SPF/DMARC + custom MAIL FROM (better inbox placement).

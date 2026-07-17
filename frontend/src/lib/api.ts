@@ -32,6 +32,24 @@ export type Recipient = {
   clickedAt?: string | null;
   sentAt: string;
 };
+export type Template = {
+  id: string;
+  brandId: string;
+  name: string;
+  subject: string;
+  category: string;
+  html: string;
+  isStarter: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+export type TemplateInput = {
+  name: string;
+  subject?: string;
+  category?: string;
+  html: string;
+};
+export type StarterTemplate = { key: string; label: string; subject: string; category: string; html: string };
 
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(API + path, {
@@ -79,4 +97,14 @@ export const api = {
       { method: "POST", body: JSON.stringify(filter) }
     ),
   recipients: (id: string) => req<Recipient[]>(`/campaigns/${id}/recipients`),
+
+  // Templates (saved email designs) — stored in the backend.
+  templates: (brandId: string) => req<Template[]>(`/brands/${brandId}/templates`),
+  createTemplate: (brandId: string, t: TemplateInput) =>
+    req<Template>(`/brands/${brandId}/templates`, { method: "POST", body: JSON.stringify(t) }),
+  updateTemplate: (id: string, t: Partial<TemplateInput>) =>
+    req<Template>(`/templates/${id}`, { method: "PUT", body: JSON.stringify(t) }),
+  deleteTemplate: (id: string) =>
+    req<{ ok: boolean }>(`/templates/${id}`, { method: "DELETE" }),
+  starterTemplates: () => req<StarterTemplate[]>("/starter-templates"),
 };
