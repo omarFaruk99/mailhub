@@ -25,6 +25,12 @@ light/dark). Details, exact "done vs next", and run commands are in **PROGRESS.m
 as the visual reference for new screens. Demo URLs are listed in **PROGRESS.md**
 (§ Concept demos). When building filters/templates/analytics etc., match that look.
 
+**Dev scope (important):** with the personal SES sandbox + local dev we can build and
+self-test **all** features (sending only to verified test emails). **SES production
+access and server deploy are deferred** — needed only at real launch (emailing actual
+customers). Don't block feature work on them. Full details: PROGRESS.md
+(§ "How far we can go WITHOUT SES production access + deploy").
+
 ## Run locally (quick)
 1. `docker compose up -d db`  (repo root — starts PostgreSQL)
 2. `cd backend && npm run dev`   → API at http://localhost:4000

@@ -58,6 +58,29 @@ Personal AWS, region **ap-southeast-1**, **sandbox**. Sender `no-reply@omarsec.c
 (DKIM verified via Cloudflare). Verified test recipients: `omarfaruk19952035@gmail.com`,
 `shuvon19952035@gmail.com`. Full detail + DevOps setup guide: `_TEMP-email-notes.md`.
 
+## How far we can go WITHOUT SES production access + deploy (read this)
+Current setup = **personal AWS SES in sandbox** + local dev. That is enough to
+**build and self-test everything** — do NOT block feature work waiting on prod/deploy.
+
+**✅ Can do now with personal credentials (sandbox + local):**
+- Build every feature (template editor, scheduling, analytics, approval, RBAC, etc.).
+- Run the whole app locally and test end-to-end.
+- Actually send emails — but **only to verified test recipients**
+  (`omarfaruk19952035@gmail.com`, `shuvon19952035@gmail.com`).
+- Contacts, campaigns, type/company filters, open/click tracking, unsubscribe — all testable.
+
+**❌ Needs SES production access + deploy first (the wall):**
+- Sending to **real, unverified** clients/prospects (that's why a non-verified address
+  like `omar@example.com` shows **Failed** in sandbox).
+- **Bulk / higher volume** sends.
+- Team-wide live use (needs the app deployed on the company server).
+
+**When to start #SES-production and #deploy:** only at real launch — i.e. when we need
+to email **actual customers**. Until then keep building + self-testing on verified emails.
+- **#SES production access**: apply in AWS (owner task; Claude guides) — takes days to
+  approve, so start a bit before launch. Adds SPF/DMARC + custom MAIL FROM.
+- **#Deploy**: docker-compose (backend+frontend) + nginx + SSL on the company Linux server.
+
 ## ⏭️ Not built yet — next (Phase 2+)
 - **Working global search** (sidebar box is visual only).
 - **Saved segments** (contact `type`/`company` filter chips are done; saving a
