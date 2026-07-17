@@ -98,7 +98,22 @@ to email **actual customers**. Until then keep building + self-testing on verifi
   approve, so start a bit before launch. Adds SPF/DMARC + custom MAIL FROM.
 - **#Deploy**: docker-compose (backend+frontend) + nginx + SSL on the company Linux server.
 
-## ⏭️ Not built yet — next (Phase 2+)
+## ▶️ Recommended next steps (in order)
+All buildable + self-testable now with personal credentials (SES production + deploy
+stay LAST, only at real launch — see the "Dev scope" section above).
+1. **Scheduling** — send a campaign later (pick date/time, timezone).
+2. **Analytics dashboard** — real open/click/bounce numbers + simple charts (no fake data).
+3. **Saved segments + working global search** (contact `type`/`company` filters exist;
+   save named segments + wire the sidebar search box).
+4. **Teams + RBAC roles + approval workflow** (Draft→Review→Approve→Send) — one bigger
+   chunk (approval needs roles).
+5. **Multi-brand** (brand switcher) **+ preference center** (per-category opt-out).
+6. **Template polish** — image **upload** button (needs Cloudflare R2 key) + a no-code
+   editor (drag-and-drop / fill-in-fields) for non-coders.
+7. **LAST, at launch:** SES **production access** (+ SPF/DMARC) and **deploy**
+   (docker-compose + nginx + SSL on the company server).
+
+## ⏭️ Not built yet — full backlog (Phase 2+)
 - **Working global search** (sidebar box is visual only).
 - **Saved segments** (contact `type`/`company` filter chips are done; saving a
   named segment + more filter fields still pending).
