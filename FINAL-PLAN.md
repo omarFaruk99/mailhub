@@ -165,6 +165,8 @@ Draft (তৈরি) → Review (পরীক্ষা) → Approve (অনু�
 - **Team, Campaign type ও Brand অনুযায়ী রিপোর্ট**
 - Dashboard + ডাউনলোডযোগ্য রিপোর্ট
 - **Google Postmaster Tools** দিয়ে reputation নজরদারি
+- **Contact activity timeline** — একজন contact-এর প্রোফাইল পেজে তার সব মেইল ইতিহাস
+  (কী পাঠানো হয়েছে, খুলেছে কিনা, ক্লিক করেছে কিনা) এক জায়গায় দেখা যাবে (Phase 2)
 
 ### Compliance (আইন — বাধ্যতামূলক)
 - প্রতি মেইলে **Unsubscribe লিংক** + **One-click unsubscribe header (RFC 8058)**
@@ -248,7 +250,7 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 - Drag-and-drop template editor + per-team library + brand kit
 - Filter + Saved Segment
 - Scheduling + timezone
-- Analytics dashboard
+- Analytics dashboard + **contact activity timeline**
 
 **Phase 3 — Multi-brand ও Preference**
 - একাধিক brand (Tripgic, Tripmargin...) যোগ
