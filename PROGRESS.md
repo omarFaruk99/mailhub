@@ -45,8 +45,18 @@ real emails delivered via Amazon SES.
   `/templates/new` & `/templates/[id]` — HTML box + **live iframe preview** + "start from
   a ready-made design"), **Campaigns** (create is a full **page** `/campaigns/new`;
   **"Start from template"** prefills subject+body+category, with live preview),
-  **Campaign detail** (send with **audience checkboxes** Client/Prospect/Internal +
-  plan/company filter + live "~N people" summary + open/click stats).
+  **Campaign detail / Send page** — **redesigned to a Loops-style 3-panel layout**
+  (`/campaigns/[id]`): top action bar (breadcrumb + status + Send test + Send), a
+  center **email preview canvas** (Desktop/Mobile toggle, live iframe of the campaign
+  HTML), and a right **inspector** with collapsible **accordion** sections —
+  **① Audience** (checkboxes Client/Prospect/Internal with live per-type counts),
+  **② Filters** (plan + company dropdowns populated from the brand's contacts, shown
+  as removable chips), **③ When to send** (Send now; Schedule = "Soon"),
+  **④ Pre-send checklist**. Plus a persistent **recap** ("N people will receive
+  this" + breakdown + **See exactly who** dialog), **Sender identity** (From /
+  Reply-to), a **confirm dialog** before sending, and **after-send stats**
+  (Sent/Opened/Clicked with %). The right inspector **collapses/expands** (a floating
+  "Settings" button reopens it).
 - Design: clean **Loops-style** — left sidebar (workspace switcher, search box, nav,
   user footer + theme toggle), soft **violet** accent, near-black buttons, light/dark.
   All colors/fonts are tokens in `src/app/globals.css` (change once → whole app).

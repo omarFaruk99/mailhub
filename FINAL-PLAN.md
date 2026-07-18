@@ -143,6 +143,10 @@ Draft (তৈরি) → Review (পরীক্ষা) → Approve (অনু�
 - **ফাইল** → সাধারণত download link (R2); ছোট দরকারি ফাইল হলে সত্যিকারের attachment
 - A/B testing (subject/content)
 - Test send + mobile/desktop preview + spam-score check
+- **Preheader / preview text** (inbox-এ subject-এর পাশে যে ছোট লেখা দেখায়) —
+  **optional/future**; এটা template editor-এর অংশ, send স্ক্রিনের না
+- **Undo send** (পাঠানোর পর ৩০ সেকেন্ড ফেরানোর সুযোগ, Gmail-এর মতো) —
+  **optional/future**; এখন confirm popup দিয়েই ভুল ঠেকানো হচ্ছে
 
 ### Campaign
 - **Category (client দেখে ও preference-এ বেছে নেয়):**
