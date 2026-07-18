@@ -571,7 +571,7 @@ function RecipientsTable({ recs, contactByEmail }: { recs: Recipient[]; contactB
               <TableRow key={rec.id}>
                 <TableCell className="text-muted-foreground tabular-nums">{i + 1}</TableCell>
                 <TableCell className="text-muted-foreground">{rec.email}</TableCell>
-                <TableCell>{contact?.name || "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{contact?.name || "—"}</TableCell>
                 <TableCell className="text-muted-foreground">{contact ? TYPE_LABEL[contact.type] : "—"}</TableCell>
                 <TableCell><RecStatus status={rec.status} /></TableCell>
                 <TableCell className="text-center">{rec.openedAt ? <Check className="mx-auto size-3.5 text-good" /> : <span className="text-muted-foreground">—</span>}</TableCell>
