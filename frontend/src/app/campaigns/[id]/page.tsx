@@ -36,7 +36,26 @@ const AUDIENCE: { value: ContactType; label: string; desc: string }[] = [
 ];
 const TYPE_LABEL: Record<ContactType, string> = { client: "Client", prospect: "Prospect", internal: "Internal" };
 
+// The email preview mimics a real inbox, which renders on a white card with dark
+// text regardless of the app's light/dark theme. So these are intentionally fixed
+// colors, NOT app theme tokens — theming them would wrongly recolor the email.
+const EMAIL = {
+  border: "#f0f0f2",
+  from: "#8a8a92",
+  subject: "#131316",
+  body: "#2e2e35",
+  placeholder: "#9a9aa2",
+};
+
 export default function CampaignSendPage() {
+  const { id } = useParams();
+  // Key the page by campaign id so navigating to a different campaign fully
+  // resets local state (picked audience, filters, search, canvas view) instead
+  // of carrying it over from the previous campaign.
+  return <CampaignSend key={String(id)} />;
+}
+
+function CampaignSend() {
   const { id: rawId } = useParams();
   const id = String(rawId);
   const { brand } = useBrand();
@@ -205,16 +224,16 @@ export default function CampaignSendPage() {
                   className="w-full overflow-hidden rounded-2xl bg-white shadow-[0_12px_40px_rgba(30,20,60,0.14)]"
                   style={{ maxWidth: device === "mobile" ? 300 : 520, transition: "max-width .2s ease" }}
                 >
-                  <div className="border-b px-5 py-3.5" style={{ borderColor: "#f0f0f2" }}>
-                    <div className="text-[13px]" style={{ color: "#8a8a92" }}>{fromLine}</div>
-                    <div className="mt-1 text-[16px] font-semibold" style={{ color: "#131316" }}>
+                  <div className="border-b px-5 py-3.5" style={{ borderColor: EMAIL.border }}>
+                    <div className="text-[13px]" style={{ color: EMAIL.from }}>{fromLine}</div>
+                    <div className="mt-1 text-[16px] font-semibold" style={{ color: EMAIL.subject }}>
                       {campaign?.subject ?? "…"}
                     </div>
                   </div>
                   <iframe
                     title="Email preview"
                     sandbox=""
-                    srcDoc={`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;padding:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.7;color:#2e2e35">${previewHtml || "<p style='color:#9a9aa2'>No content yet.</p>"}</body>`}
+                    srcDoc={`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;padding:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.7;color:${EMAIL.body}">${previewHtml || `<p style='color:${EMAIL.placeholder}'>No content yet.</p>`}</body>`}
                     className="block w-full border-0"
                     style={{ height: 340, background: "white" }}
                   />
