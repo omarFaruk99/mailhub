@@ -553,10 +553,11 @@ function RecipientsTable({ recs, contactByEmail }: { recs: Recipient[]; contactB
         </div>
       </div>
 
-      <div className="max-h-[430px] overflow-y-auto">
+      <div className="max-h-[430px] overflow-y-auto px-3 py-1.5">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10 text-muted-foreground">#</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
@@ -566,8 +567,9 @@ function RecipientsTable({ recs, contactByEmail }: { recs: Recipient[]; contactB
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map(({ rec, contact }) => (
+            {rows.map(({ rec, contact }, i) => (
               <TableRow key={rec.id}>
+                <TableCell className="text-muted-foreground tabular-nums">{i + 1}</TableCell>
                 <TableCell className="text-muted-foreground">{rec.email}</TableCell>
                 <TableCell>{contact?.name || "—"}</TableCell>
                 <TableCell className="text-muted-foreground">{contact ? TYPE_LABEL[contact.type] : "—"}</TableCell>
@@ -578,7 +580,7 @@ function RecipientsTable({ recs, contactByEmail }: { recs: Recipient[]; contactB
             ))}
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                   {recs.length === 0 ? "No recipients yet." : "No recipients match your search."}
                 </TableCell>
               </TableRow>
