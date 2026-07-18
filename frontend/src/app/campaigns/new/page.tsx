@@ -23,7 +23,7 @@ export default function NewCampaignPage() {
   const qc = useQueryClient();
   const router = useRouter();
 
-  const [form, setForm] = useState({ name: "", category: CATEGORIES[0], subject: "", html: "" });
+  const [form, setForm] = useState({ name: "", category: "", subject: "", html: "" });
   const [pickedName, setPickedName] = useState("");
 
   const templates = useQuery({ queryKey: ["templates", brandId], queryFn: () => api.templates(brandId!), enabled: !!brandId });
@@ -31,7 +31,7 @@ export default function NewCampaignPage() {
   // Deselect the template and empty everything it filled (name, subject, category, body).
   function clearTemplate() {
     setPickedName("");
-    setForm((f) => ({ ...f, name: "", subject: "", category: CATEGORIES[0], html: "" }));
+    setForm((f) => ({ ...f, name: "", subject: "", category: "", html: "" }));
   }
 
   // Prefill subject + body from a saved template (name stays editable).
@@ -70,7 +70,7 @@ export default function NewCampaignPage() {
             </Button>
             <Button
               onClick={() => createMut.mutate()}
-              disabled={!form.name || !form.subject || !form.html || createMut.isPending}
+              disabled={!form.name || !form.category || !form.subject || !form.html || createMut.isPending}
             >
               {createMut.isPending ? "Creating…" : "Create draft"}
             </Button>
@@ -102,24 +102,24 @@ export default function NewCampaignPage() {
             </div>
           )}
           <div className="flex flex-col gap-1.5">
-            <Label>Name (internal)</Label>
+            <Label>Name (internal) <span className="text-red-500">*</span></Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Product update — March" />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Category</Label>
+            <Label>Category <span className="text-red-500">*</span></Label>
             <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v ?? form.category })}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Pick a category…" /></SelectTrigger>
               <SelectContent>
                 {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Subject</Label>
+            <Label>Subject <span className="text-red-500">*</span></Label>
             <Input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="🚀 What's new" />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Body (HTML)</Label>
+            <Label>Body (HTML) <span className="text-red-500">*</span></Label>
             <Textarea rows={8} value={form.html} onChange={(e) => setForm({ ...form, html: e.target.value })} placeholder="<h2>Hello!</h2><p>…</p>" />
           </div>
         </div>
