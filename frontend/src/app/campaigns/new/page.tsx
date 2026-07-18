@@ -28,6 +28,12 @@ export default function NewCampaignPage() {
 
   const templates = useQuery({ queryKey: ["templates", brandId], queryFn: () => api.templates(brandId!), enabled: !!brandId });
 
+  // Deselect the template and empty the subject + body it filled.
+  function clearTemplate() {
+    setPickedName("");
+    setForm((f) => ({ ...f, subject: "", html: "" }));
+  }
+
   // Prefill subject + body from a saved template (name stays editable).
   // Select by template name (unique per brand) so the trigger shows the name, not an id.
   function pickTemplate(name: string) {
@@ -77,7 +83,15 @@ export default function NewCampaignPage() {
         <div className="flex flex-col gap-4">
           {(templates.data?.length ?? 0) > 0 && (
             <div className="flex flex-col gap-1.5">
-              <Label>Start from template (optional)</Label>
+              <div className="flex items-center justify-between">
+                <Label>Start from template (optional)</Label>
+                {pickedName && (
+                  <button type="button" onClick={clearTemplate}
+                    className="text-xs text-muted-foreground underline hover:text-foreground">
+                    Clear
+                  </button>
+                )}
+              </div>
               <Select value={pickedName} onValueChange={(v) => { if (v) pickTemplate(v); }}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="Pick a saved template…" /></SelectTrigger>
                 <SelectContent>
