@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   Send, Monitor, Smartphone, ChevronRight, PanelRightClose, Settings2, Check, X, Search,
+  Users, Mail, Maximize2, Minimize2, ZoomIn, Clock, UserCheck,
 } from "lucide-react";
 
 // Which contact types are pre-checked for a category (user can change).
@@ -75,7 +76,9 @@ function CampaignSend() {
   const [company, setCompany] = useState("");
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [canvasView, setCanvasView] = useState<"recipients" | "email">("recipients");
+  const [canvasView, setCanvasView] = useState<"recipients" | "email">("email");
+  const [zoom, setZoom] = useState(100); // email-preview zoom %
+  const [fullscreen, setFullscreen] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({ audience: true, filters: false, when: false, checklist: false });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
@@ -113,6 +116,7 @@ function CampaignSend() {
       toast.success(`Sent ${r.sent} · skipped ${r.skippedSuppressed + r.skippedAlready} · failed ${r.failed}`);
       qc.invalidateQueries({ queryKey: ["recipients", id] });
       qc.invalidateQueries({ queryKey: ["campaigns", brandId] });
+      setCanvasView("recipients"); // jump to the results once the send finishes
     },
     onError: (e: Error) => toast.error("Send failed: " + e.message),
   });
@@ -149,6 +153,19 @@ function CampaignSend() {
   const allGood = failingChecks === 0;
 
   const fromLine = brand ? `${brand.name} <no-reply@${brand.domain}>` : "…";
+  const replyTo = `no-reply@${brand?.domain ?? "…"}`;
+
+  // ---- email-preview header + bottom status bar values ----
+  const toCount = isSent ? sentCount : total;
+  // earliest recipient sentAt = when this campaign actually went out
+  const sentText =
+    isSent && recs.length
+      ? new Date([...recs].map((r) => r.sentAt).sort()[0]).toLocaleString()
+      : "Not sent yet";
+  // rough estimate at SES's default ~14 emails/sec (840/min)
+  const estTime = total <= 0 ? "—" : total < 840 ? "< 1 minute" : `~${Math.ceil(total / 840)} minutes`;
+  const audienceLabel = AUDIENCE.filter((a) => types.includes(a.value)).map((a) => a.label).join(", ") || "None";
+  const cycleZoom = () => setZoom((z) => (z >= 150 ? 50 : z + 25)); // 50 → 75 → … → 150 → 50
 
   // send button label
   const sendLabel = sendMut.isPending
@@ -185,62 +202,113 @@ function CampaignSend() {
       {/* ===== Body: canvas + inspector ===== */}
       <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: inspectorOpen ? "1fr 350px" : "1fr 0px", transition: "grid-template-columns .2s ease" }}>
         {/* Canvas */}
-        <div className="relative overflow-y-auto bg-muted/40 px-6 py-8">
-          {!inspectorOpen && (
-            <button
-              onClick={() => setInspectorOpen(true)}
-              className="absolute right-4 top-4 z-10 flex items-center gap-1.5 rounded-lg border bg-card px-3 py-2 text-sm font-medium shadow-sm hover:bg-muted"
-            >
-              <Settings2 className="size-4" /> Settings
-            </button>
-          )}
-          <div className="mx-auto flex w-full max-w-[560px] flex-col items-center gap-4">
-            {isSent && (
-              <>
-                {/* Performance stats */}
-                <div className="grid w-full grid-cols-3 gap-2.5">
-                  <StatCard label="Sent" value={sentCount} />
-                  <StatCard label="Opened" value={openedCount} pct={pct(openedCount)} good />
-                  <StatCard label="Clicked" value={clickedCount} pct={pct(clickedCount)} good />
+        <div className={cn("relative flex min-h-0 flex-col bg-background", fullscreen && "fixed inset-0 z-50")}>
+          {/* --- toolbar: tabs (left) + view controls (right) --- */}
+          <div className="flex flex-wrap items-center gap-2.5 border-b px-5">
+            <div className="flex">
+              <CanvasTab active={canvasView === "recipients"} onClick={() => setCanvasView("recipients")} icon={Users} label="Recipients" />
+              <CanvasTab active={canvasView === "email"} onClick={() => setCanvasView("email")} icon={Mail} label="Email Preview" />
+            </div>
+            <div className="flex-1" />
+            {canvasView === "email" && (
+              <div className="flex items-center gap-2 py-2">
+                <div className="inline-flex rounded-lg border bg-muted p-0.5">
+                  <ToggleBtn active={device === "desktop"} onClick={() => setDevice("desktop")} icon={Monitor} label="Desktop" />
+                  <ToggleBtn active={device === "mobile"} onClick={() => setDevice("mobile")} icon={Smartphone} label="Mobile" />
                 </div>
-                {/* After sending, the canvas shows results; toggle back to the email if needed. */}
-                <div className="inline-flex rounded-full border bg-card p-0.5 shadow-sm">
-                  <ToggleBtn active={canvasView === "recipients"} onClick={() => setCanvasView("recipients")} label="Recipients" />
-                  <ToggleBtn active={canvasView === "email"} onClick={() => setCanvasView("email")} label="Email" />
-                </div>
-              </>
+                <button
+                  onClick={cycleZoom}
+                  className="inline-flex items-center gap-1.5 rounded-lg border bg-card px-2.5 py-1.5 text-[12.5px] font-semibold tabular-nums hover:bg-muted"
+                  title="Zoom"
+                >
+                  <ZoomIn className="size-4 text-muted-foreground" /> {zoom}%
+                </button>
+                <button
+                  onClick={() => setFullscreen((f) => !f)}
+                  className="grid size-8 place-items-center rounded-lg border bg-card text-muted-foreground hover:bg-muted"
+                  title={fullscreen ? "Exit full screen" : "Full screen"}
+                >
+                  {fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+                </button>
+              </div>
             )}
+            {!inspectorOpen && (
+              <button
+                onClick={() => setInspectorOpen(true)}
+                className="my-1.5 flex items-center gap-1.5 rounded-lg border bg-card px-3 py-1.5 text-[13px] font-medium hover:bg-muted"
+              >
+                <Settings2 className="size-4" /> Settings
+              </button>
+            )}
+          </div>
 
-            {isSent && canvasView === "recipients" ? (
-              <RecipientsTable recs={recs} contactByEmail={contactByEmail} />
-            ) : (
-              <>
-                {!isSent && (
-                  <div className="inline-flex rounded-full border bg-card p-0.5 shadow-sm">
-                    <ToggleBtn active={device === "desktop"} onClick={() => setDevice("desktop")} icon={Monitor} label="Desktop" />
-                    <ToggleBtn active={device === "mobile"} onClick={() => setDevice("mobile")} icon={Smartphone} label="Mobile" />
+          {/* --- stage --- */}
+          <div className="flex-1 overflow-auto bg-muted/40 px-6 py-8">
+            {canvasView === "recipients" ? (
+              <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4">
+                {isSent && (
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <StatCard label="Sent" value={sentCount} />
+                    <StatCard label="Opened" value={openedCount} pct={pct(openedCount)} good />
+                    <StatCard label="Clicked" value={clickedCount} pct={pct(clickedCount)} good />
                   </div>
                 )}
+                {isSent ? (
+                  <RecipientsTable recs={recs} contactByEmail={contactByEmail} />
+                ) : (
+                  <AudiencePreview audience={audience} total={total} />
+                )}
+              </div>
+            ) : (
+              <div className="mx-auto w-full" style={{ maxWidth: device === "mobile" ? 380 : 640 }}>
+                {/* browser-window email preview; `zoom` resizes so the stage can scroll */}
                 <div
-                  className="w-full overflow-hidden rounded-2xl bg-white shadow-[0_12px_40px_rgba(30,20,60,0.14)]"
-                  style={{ maxWidth: device === "mobile" ? 300 : 520, transition: "max-width .2s ease" }}
+                  className="overflow-hidden rounded-2xl border bg-card shadow-[0_18px_50px_rgba(30,20,60,0.16)]"
+                  style={{ zoom: zoom / 100 }}
                 >
-                  <div className="border-b px-5 py-3.5" style={{ borderColor: EMAIL.border }}>
-                    <div className="text-[13px]" style={{ color: EMAIL.from }}>{fromLine}</div>
-                    <div className="mt-1 text-[16px] font-semibold" style={{ color: EMAIL.subject }}>
-                      {campaign?.subject ?? "…"}
+                  {/* window chrome */}
+                  <div
+                    className="flex items-center gap-2 border-b px-4 py-3"
+                    style={{ background: "color-mix(in oklch, var(--muted) 55%, var(--card))" }}
+                  >
+                    <span className="size-[11px] rounded-full" style={{ background: "#ff5f57" }} />
+                    <span className="size-[11px] rounded-full" style={{ background: "#febc2e" }} />
+                    <span className="size-[11px] rounded-full" style={{ background: "#28c840" }} />
+                  </div>
+                  {/* email-client meta header */}
+                  <div className="border-b px-5 py-3.5 text-[13px]">
+                    <div className="flex flex-wrap justify-between gap-x-8 gap-y-1">
+                      <MetaPair k="From" v={fromLine} />
+                      <MetaPair k="To" v={`${toCount} recipient${toCount === 1 ? "" : "s"}`} />
+                    </div>
+                    <div className="mt-1 flex flex-wrap justify-between gap-x-8 gap-y-1">
+                      <MetaPair k="Reply-to" v={replyTo} />
+                      <MetaPair k="Sent" v={sentText} muted />
                     </div>
                   </div>
+                  {/* subject */}
+                  <div className="flex items-baseline gap-3 border-b px-5 py-3.5">
+                    <span className="w-[62px] flex-none text-[12px] text-muted-foreground">Subject</span>
+                    <span className="text-[15.5px] font-semibold">{campaign?.subject ?? "…"}</span>
+                  </div>
+                  {/* body (real inbox = white) */}
                   <iframe
                     title="Email preview"
                     sandbox=""
                     srcDoc={`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;padding:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.7;color:${EMAIL.body}">${previewHtml || `<p style='color:${EMAIL.placeholder}'>No content yet.</p>`}</body>`}
                     className="block w-full border-0"
-                    style={{ height: 340, background: "white" }}
+                    style={{ height: fullscreen ? "calc(100vh - 320px)" : 460, background: "white" }}
                   />
                 </div>
-              </>
+              </div>
             )}
+          </div>
+
+          {/* --- bottom status bar --- */}
+          <div className="flex flex-wrap items-center gap-x-14 gap-y-2 border-t px-6 py-3">
+            <StatusItem icon={Users} label="Recipients" value={`${toCount} ${toCount === 1 ? "person" : "people"}`} />
+            <StatusItem icon={Clock} label="Estimated send time" value={estTime} />
+            <StatusItem icon={UserCheck} label="Selected audience" value={audienceLabel} />
           </div>
         </div>
 
@@ -483,12 +551,76 @@ function ToggleBtn({ active, onClick, icon: Icon, label }: { active: boolean; on
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center gap-1.5 rounded-full px-3.5 py-1 text-[12.5px] font-semibold text-muted-foreground",
-        active && "bg-muted text-foreground"
+        "flex items-center gap-1.5 rounded-md px-3 py-1 text-[12.5px] font-semibold text-muted-foreground",
+        active && "bg-card text-foreground shadow-sm"
       )}
     >
       {Icon && <Icon className="size-3.5" />} {label}
     </button>
+  );
+}
+
+// Toolbar tab (Recipients / Email Preview) — underline marks the active view.
+function CanvasTab({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof Monitor; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "-mb-px flex items-center gap-2 border-b-2 border-transparent px-3 pb-3 pt-3 text-[13.5px] font-semibold text-muted-foreground hover:text-foreground",
+        active && "text-foreground"
+      )}
+      style={active ? { borderBottomColor: "var(--sidebar-primary)", color: "var(--sidebar-primary)" } : undefined}
+    >
+      <Icon className="size-4" /> {label}
+    </button>
+  );
+}
+
+// One "key: value" line in the email-client meta header.
+function MetaPair({ k, v, muted }: { k: string; v: string; muted?: boolean }) {
+  return (
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span className="flex-none text-[12px] text-muted-foreground">{k}</span>
+      <span className={cn("min-w-0 truncate", muted && "text-muted-foreground")}>{v}</span>
+    </span>
+  );
+}
+
+// One item in the bottom status bar.
+function StatusItem({ icon: Icon, label, value }: { icon: typeof Monitor; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <Icon className="size-[18px] flex-none text-muted-foreground" />
+      <div>
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="text-[13px] font-semibold">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+// Before a send, the Recipients tab previews who currently matches.
+function AudiencePreview({ audience, total }: { audience: Contact[]; total: number }) {
+  return (
+    <div className="w-full overflow-hidden rounded-xl border bg-card">
+      <div className="border-b px-4 py-3 text-[13px] font-semibold tabular-nums">
+        {total} {total === 1 ? "person" : "people"} will receive this
+      </div>
+      <div className="max-h-[430px] overflow-y-auto">
+        {audience.length === 0 && (
+          <div className="px-4 py-10 text-center text-[13px] text-muted-foreground">No one matches yet.</div>
+        )}
+        {audience.map((c) => (
+          <div key={c.id} className="flex items-center gap-2 border-b px-4 py-2.5 text-[13px] last:border-b-0">
+            <span className="truncate">{c.name || c.email}</span>
+            {c.name && <span className="truncate text-muted-foreground">{c.email}</span>}
+            <span className="ml-auto flex-none rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+              {TYPE_LABEL[c.type]}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
