@@ -46,24 +46,5 @@ Full detail + what's next: **[PROGRESS.md](PROGRESS.md)**.
 docker compose up -d db          # PostgreSQL
 cd backend  && npm run dev       # API  → http://localhost:4000
 cd frontend && npm run dev       # UI   → http://localhost:3000
+cd backend  && npm run prisma:studio   # view/edit data (own terminal; Ctrl+C to stop)
 ```
-
-## View / edit the data — Prisma Studio
-Prisma Studio is a visual page to see and edit the database tables (like Excel
-for your data). It's a **separate tool** — run it in its own terminal.
-
-```bash
-cd backend && npm run prisma:studio
-```
-- It opens in your browser. The terminal prints the exact address, e.g.
-  `Prisma Studio is running at: http://localhost:5555` (the port can vary —
-  read that line).
-- Left side = tables (Brand, Contact, Campaign, Template, …). Click a table to
-  see its rows; click a row to view/edit; "Add record" to insert.
-- Backend and Prisma Studio both talk to the **same database** (via
-  `backend/.env` → `DATABASE_URL`), so changes made in the app show up here on refresh.
-
-**Stop Prisma Studio:** press `Ctrl + C` in that terminal.
-
-> Note: the backend's own Prisma runs automatically inside `npm run dev` — you
-> don't start it separately. Prisma Studio is only for *viewing/editing* data.
