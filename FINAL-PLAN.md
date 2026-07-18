@@ -237,11 +237,12 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 ## ১০. ধাপে ধাপে বানানোর প্ল্যান (Phase)
 
 **Phase 1 — MVP (এক brand দিয়ে শুরু, যেমন Innovate)** — ✅ **সম্পন্ন (local dev)**; বিস্তারিত [PROGRESS.md](PROGRESS.md)
-- Brand + Sender identity (domain, DKIM, SPF, DMARC)
+- Brand + Sender identity — domain + **DKIM ✅ verified**; **SPF + DMARC — production-এর আগে বাকি** (dev sandbox-এ এখনো করা হয়নি)
 - Contact (এক ইমেইল = এক record) + CSV import
 - Campaign type + একটি broadcast (filter সহ) SES দিয়ে পাঠানো
-- Unsubscribe + **one-click unsubscribe (RFC 8058)** + suppression
-- Bounce/complaint webhook (**SNS signature verify**) + **auto-pause**
+- Unsubscribe + **one-click unsubscribe (RFC 8058)** + per-contact suppression
+- Bounce/complaint webhook (**SNS signature verify**) → auto-suppress
+- **⚠️ Auto-pause (brand/campaign-level circuit breaker — bounce/complaint rate হঠাৎ বাড়লে পুরো পাঠানো থামানো) — এখনো বানানো হয়নি, production-এর আগে বাধ্যতামূলক**
 - **Exactly-once sending**
 - বেসিক open/click tracking
 
