@@ -102,11 +102,11 @@ export default function NewCampaignPage() {
             </div>
           )}
           <div className="flex flex-col gap-1.5">
-            <Label>Name (internal) <span className="text-red-500">*</span></Label>
+            <Label required>Name (internal)</Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Product update — March" />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Category <span className="text-red-500">*</span></Label>
+            <Label required>Category</Label>
             <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v ?? form.category })}>
               <SelectTrigger className="w-full"><SelectValue placeholder="Pick a category…" /></SelectTrigger>
               <SelectContent>
@@ -115,11 +115,11 @@ export default function NewCampaignPage() {
             </Select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Subject <span className="text-red-500">*</span></Label>
+            <Label required>Subject</Label>
             <Input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="🚀 What's new" />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Body (HTML) <span className="text-red-500">*</span></Label>
+            <Label required>Body (HTML)</Label>
             <Textarea rows={8} value={form.html} onChange={(e) => setForm({ ...form, html: e.target.value })} placeholder="<h2>Hello!</h2><p>…</p>" />
           </div>
         </div>

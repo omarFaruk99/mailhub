@@ -109,7 +109,7 @@ export function TemplateEditor({ template }: { template?: Template }) {
             </div>
           )}
           <div className="flex flex-col gap-1.5">
-            <Label>Template name <span className="text-red-500">*</span></Label>
+            <Label required>Template name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Dark Mode Launch" />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -126,7 +126,7 @@ export function TemplateEditor({ template }: { template?: Template }) {
             <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="🚀 What's new" />
           </div>
           <div className="flex flex-1 flex-col gap-1.5">
-            <Label>Body (HTML) <span className="text-red-500">*</span></Label>
+            <Label required>Body (HTML)</Label>
             <Textarea value={html} onChange={(e) => setHtml(e.target.value)} placeholder="<table>…</table>"
               className="min-h-[300px] flex-1 font-mono text-xs" />
             <p className="text-xs text-muted-foreground">Use <code>{"{{name}}"}</code> for the recipient&apos;s name.</p>
