@@ -37,6 +37,12 @@ PROGRESS.md (§ "How far we can go WITHOUT SES production access + deploy").
 3. `cd frontend && npm run dev`  → UI at http://localhost:3000
 - View data: `cd backend && npm run prisma:studio`
 - Secrets live in `backend/.env` (SES keys, DATABASE_URL) — never commit `.env`.
+- **Daily work runs on the dev server** (`npm run dev`) — adding a feature/update does
+  NOT need `npm run build`. Only build for a final sanity check or a real deploy.
+- **NEVER run `npm run build` while `npm run dev` is running** — both use the same
+  `.next` folder, so it corrupts the cache and throws a "Jest worker … exceeding retry
+  limit" runtime error. If you must build, stop dev first, then build, then restart dev.
+  (Fix if it happens: stop dev → `rm -rf frontend/.next` → `npm run dev`.)
 
 ## Communication with this user (IMPORTANT)
 
