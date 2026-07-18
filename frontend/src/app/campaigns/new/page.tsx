@@ -28,10 +28,10 @@ export default function NewCampaignPage() {
 
   const templates = useQuery({ queryKey: ["templates", brandId], queryFn: () => api.templates(brandId!), enabled: !!brandId });
 
-  // Deselect the template and empty the subject + body it filled.
+  // Deselect the template and empty everything it filled (name, subject, category, body).
   function clearTemplate() {
     setPickedName("");
-    setForm((f) => ({ ...f, subject: "", html: "" }));
+    setForm((f) => ({ ...f, name: "", subject: "", category: CATEGORIES[0], html: "" }));
   }
 
   // Prefill subject + body from a saved template (name stays editable).

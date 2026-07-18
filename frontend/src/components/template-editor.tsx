@@ -45,9 +45,13 @@ export function TemplateEditor({ template }: { template?: Template }) {
     setName((n) => n || d.label);
   }
 
-  // Deselect the ready-made design and empty the HTML it loaded.
+  // Deselect the ready-made design and empty everything it filled
+  // (name, subject, category, HTML) — consistent with campaign "Clear".
   function clearStarter() {
     setStarterLabel("");
+    setName("");
+    setSubject("");
+    setCategory("");
     setHtml("");
   }
 
