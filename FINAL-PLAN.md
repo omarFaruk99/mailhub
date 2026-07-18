@@ -108,6 +108,7 @@ Draft (তৈরি) → Review (পরীক্ষা) → Approve (অনু�
 | প্রতি নতুন domain | **warm-up** — অল্প অল্প করে volume বাড়ানো |
 | **SNS webhook signature verify** | ভুয়া bounce event ঢোকানো ঠেকায় (security) |
 | **Exactly-once sending** | worker crash করলেও একজন একবারই মেইল পায় |
+| **Branded tracking domain** (`click.brand.com`) — unsubscribe/open/click লিংক নিজের subdomain দিয়ে যাবে, raw backend ডোমেইনের বদলে | **সবার শেষে করব** — জরুরি না, marketing/transactional subdomain সেটাপের সাথেই একসাথে করা যাবে (বাড়তি খরচ/কাজ প্রায় শূন্য) |
 
 ### ২০২৬ Bulk Sender নিয়ম (Google / Yahoo / Microsoft)
 > **নোট:** "bulk sender" = দিনে ৫,০০০+ মেইল। আপনার volume (৭০০–৮০০ একসাথে, মাসে
