@@ -7,13 +7,18 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ContactType } from "@/lib/api";
 import { useBrand } from "@/lib/use-brand";
+import type { Contact, Recipient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogClose,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
-  Send, Monitor, Smartphone, ChevronRight, PanelRightClose, Settings2, Check, X,
+  Send, Monitor, Smartphone, ChevronRight, PanelRightClose, Settings2, Check, X, Search,
 } from "lucide-react";
 
 // Which contact types are pre-checked for a category (user can change).
@@ -94,6 +99,8 @@ export default function CampaignSendPage() {
   });
 
   const recs = recipients.data ?? [];
+  // email → contact, so the results table can show each recipient's name & type
+  const contactByEmail = new Map((contacts.data ?? []).map((c) => [c.email, c]));
   const isSent = campaign?.status === "sent" || recs.length > 0;
   const sentCount = recs.filter((r) => r.status === "sent").length;
   const openedCount = recs.filter((r) => r.openedAt).length;
@@ -185,7 +192,7 @@ export default function CampaignSendPage() {
             )}
 
             {isSent && canvasView === "recipients" ? (
-              <RecipientsTable recs={recs} />
+              <RecipientsTable recs={recs} contactByEmail={contactByEmail} />
             ) : (
               <>
                 {!isSent && (
@@ -475,22 +482,93 @@ function StatCard({ label, value, pct, good }: { label: string; value: number; p
   );
 }
 
-function RecipientsTable({ recs }: { recs: { id: string; email: string; status: string; openedAt?: string | null; clickedAt?: string | null }[] }) {
+const REC_FILTERS: { key: "all" | "sent" | "failed" | "opened"; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "sent", label: "Sent" },
+  { key: "failed", label: "Failed" },
+  { key: "opened", label: "Opened" },
+];
+
+function RecipientsTable({ recs, contactByEmail }: { recs: Recipient[]; contactByEmail: Map<string, Contact> }) {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<"all" | "sent" | "failed" | "opened">("all");
+
+  const q = query.trim().toLowerCase();
+  const rows = recs
+    .map((r) => ({ rec: r, contact: contactByEmail.get(r.email) }))
+    .filter(({ rec, contact }) => {
+      if (status === "sent" && rec.status !== "sent") return false;
+      if (status === "failed" && rec.status !== "failed") return false;
+      if (status === "opened" && !rec.openedAt) return false;
+      if (!q) return true;
+      return rec.email.toLowerCase().includes(q) || (contact?.name ?? "").toLowerCase().includes(q);
+    });
+
   return (
     <div className="w-full overflow-hidden rounded-xl border bg-card">
-      <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 border-b bg-muted/50 px-4 py-2.5 text-[12px] font-semibold text-muted-foreground">
-        <span>Email</span><span>Status</span><span className="w-14 text-center">Opened</span><span className="w-14 text-center">Clicked</span>
+      {/* Search + status filter */}
+      <div className="flex flex-wrap items-center gap-2 border-b p-3">
+        <div className="relative min-w-[180px] flex-1">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by email or name…"
+            className="h-8 pl-8 text-[13px]"
+          />
+        </div>
+        <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+          {REC_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setStatus(f.key)}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[12px] font-medium text-muted-foreground",
+                status === f.key && "bg-card text-foreground shadow-sm"
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="max-h-[440px] overflow-y-auto">
-        {recs.length === 0 && <div className="px-4 py-10 text-center text-sm text-muted-foreground">No recipients yet.</div>}
-        {recs.map((r) => (
-          <div key={r.id} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 border-b px-4 py-2.5 text-[13px] last:border-b-0">
-            <span className="truncate text-muted-foreground">{r.email}</span>
-            <RecStatus status={r.status} />
-            <span className="w-14 text-center">{r.openedAt ? <Check className="mx-auto size-3.5 text-good" /> : <span className="text-muted-foreground">—</span>}</span>
-            <span className="w-14 text-center">{r.clickedAt ? <Check className="mx-auto size-3.5 text-good" /> : <span className="text-muted-foreground">—</span>}</span>
-          </div>
-        ))}
+
+      <div className="max-h-[430px] overflow-y-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Email</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-center">Opened</TableHead>
+              <TableHead className="text-center">Clicked</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map(({ rec, contact }) => (
+              <TableRow key={rec.id}>
+                <TableCell className="text-muted-foreground">{rec.email}</TableCell>
+                <TableCell>{contact?.name || "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{contact ? TYPE_LABEL[contact.type] : "—"}</TableCell>
+                <TableCell><RecStatus status={rec.status} /></TableCell>
+                <TableCell className="text-center">{rec.openedAt ? <Check className="mx-auto size-3.5 text-good" /> : <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="text-center">{rec.clickedAt ? <Check className="mx-auto size-3.5 text-good" /> : <span className="text-muted-foreground">—</span>}</TableCell>
+              </TableRow>
+            ))}
+            {rows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                  {recs.length === 0 ? "No recipients yet." : "No recipients match your search."}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="border-t px-4 py-2 text-[12px] text-muted-foreground tabular-nums">
+        Showing {rows.length} of {recs.length}
       </div>
     </div>
   );
