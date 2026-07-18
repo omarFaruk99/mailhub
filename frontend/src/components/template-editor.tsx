@@ -45,6 +45,12 @@ export function TemplateEditor({ template }: { template?: Template }) {
     setName((n) => n || d.label);
   }
 
+  // Deselect the ready-made design and empty the HTML it loaded.
+  function clearStarter() {
+    setStarterLabel("");
+    setHtml("");
+  }
+
   const saveMut = useMutation({
     mutationFn: () => {
       const payload = { name, subject, category, html };
@@ -80,7 +86,15 @@ export function TemplateEditor({ template }: { template?: Template }) {
         <div className="flex flex-col gap-4">
           {!template && (
             <div className="flex flex-col gap-1.5">
-              <Label>Start from a ready-made design (optional)</Label>
+              <div className="flex items-center justify-between">
+                <Label>Start from a ready-made design (optional)</Label>
+                {starterLabel && (
+                  <button type="button" onClick={clearStarter}
+                    className="text-xs text-muted-foreground underline hover:text-foreground">
+                    Clear
+                  </button>
+                )}
+              </div>
               <Select value={starterLabel} onValueChange={(v) => { if (v) applyStarter(v); }}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="Pick a design…" /></SelectTrigger>
                 <SelectContent>
