@@ -14,6 +14,15 @@ Beginner glossary (Bangla): **[GLOSSARY.md](GLOSSARY.md)**.
 Current build status + how to run: **[PROGRESS.md](PROGRESS.md)** — read this at the
 start of a new session to know exactly what already works and what's next.
 
+**FINAL-PLAN.md vs PROGRESS.md — do not confuse these:**
+- **FINAL-PLAN.md** = the full A-to-Z vision/roadmap — everything we will and won't
+  build, and why, across all phases. Changes rarely.
+- **PROGRESS.md** = "you are here" — only what's already ✅ done, and what's
+  **immediately** next. Changes every session.
+- A feature the user likes but wants done "later/at the end" goes into FINAL-PLAN.md
+  (under its phase) — **not** into PROGRESS.md's next-up list. Only move it into
+  PROGRESS.md when it actually becomes the immediate next task.
+
 ## Current status (read first)
 **Phase 1 MVP is BUILT and working locally** — backend (Express + Prisma + PostgreSQL
 in Docker) and frontend (Next.js) both run. Verified end-to-end (14/14 checks) and

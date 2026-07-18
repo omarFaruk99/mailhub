@@ -108,6 +108,7 @@ Draft (তৈরি) → Review (পরীক্ষা) → Approve (অনু�
 | প্রতি নতুন domain | **warm-up** — অল্প অল্প করে volume বাড়ানো |
 | **SNS webhook signature verify** | ভুয়া bounce event ঢোকানো ঠেকায় (security) |
 | **Exactly-once sending** | worker crash করলেও একজন একবারই মেইল পায় |
+| **Branded tracking domain** (`click.brand.com`) — unsubscribe/open/click লিংক নিজের subdomain দিয়ে যাবে, raw backend ডোমেইনের বদলে | **সবার শেষে করব** — জরুরি না, marketing/transactional subdomain সেটাপের সাথেই একসাথে করা যাবে (বাড়তি খরচ/কাজ প্রায় শূন্য) |
 
 ### ২০২৬ Bulk Sender নিয়ম (Google / Yahoo / Microsoft)
 > **নোট:** "bulk sender" = দিনে ৫,০০০+ মেইল। আপনার volume (৭০০–৮০০ একসাথে, মাসে
@@ -165,6 +166,8 @@ Draft (তৈরি) → Review (পরীক্ষা) → Approve (অনু�
 - **Team, Campaign type ও Brand অনুযায়ী রিপোর্ট**
 - Dashboard + ডাউনলোডযোগ্য রিপোর্ট
 - **Google Postmaster Tools** দিয়ে reputation নজরদারি
+- **Contact activity timeline** — একজন contact-এর প্রোফাইল পেজে তার সব মেইল ইতিহাস
+  (কী পাঠানো হয়েছে, খুলেছে কিনা, ক্লিক করেছে কিনা) এক জায়গায় দেখা যাবে (Phase 2)
 
 ### Compliance (আইন — বাধ্যতামূলক)
 - প্রতি মেইলে **Unsubscribe লিংক** + **One-click unsubscribe header (RFC 8058)**
@@ -234,11 +237,12 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 ## ১০. ধাপে ধাপে বানানোর প্ল্যান (Phase)
 
 **Phase 1 — MVP (এক brand দিয়ে শুরু, যেমন Innovate)** — ✅ **সম্পন্ন (local dev)**; বিস্তারিত [PROGRESS.md](PROGRESS.md)
-- Brand + Sender identity (domain, DKIM, SPF, DMARC)
+- Brand + Sender identity — domain + **DKIM ✅ verified**; **SPF + DMARC — production-এর আগে বাকি** (dev sandbox-এ এখনো করা হয়নি)
 - Contact (এক ইমেইল = এক record) + CSV import
 - Campaign type + একটি broadcast (filter সহ) SES দিয়ে পাঠানো
-- Unsubscribe + **one-click unsubscribe (RFC 8058)** + suppression
-- Bounce/complaint webhook (**SNS signature verify**) + **auto-pause**
+- Unsubscribe + **one-click unsubscribe (RFC 8058)** + per-contact suppression
+- Bounce/complaint webhook (**SNS signature verify**) → auto-suppress
+- **⚠️ Auto-pause (brand/campaign-level circuit breaker — bounce/complaint rate হঠাৎ বাড়লে পুরো পাঠানো থামানো) — এখনো বানানো হয়নি, production-এর আগে বাধ্যতামূলক**
 - **Exactly-once sending**
 - বেসিক open/click tracking
 
@@ -248,7 +252,7 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 - Drag-and-drop template editor + per-team library + brand kit
 - Filter + Saved Segment
 - Scheduling + timezone
-- Analytics dashboard
+- Analytics dashboard + **contact activity timeline**
 
 **Phase 3 — Multi-brand ও Preference**
 - একাধিক brand (Tripgic, Tripmargin...) যোগ
