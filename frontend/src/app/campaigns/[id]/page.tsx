@@ -51,6 +51,7 @@ export default function CampaignSendPage() {
   const [company, setCompany] = useState("");
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [canvasView, setCanvasView] = useState<"recipients" | "email">("recipients");
   const [open, setOpen] = useState<Record<string, boolean>>({ audience: true, filters: false, when: false, checklist: false });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
@@ -97,8 +98,16 @@ export default function CampaignSendPage() {
   const sentCount = recs.filter((r) => r.status === "sent").length;
   const openedCount = recs.filter((r) => r.openedAt).length;
   const clickedCount = recs.filter((r) => r.clickedAt).length;
-  const denom = recs.length || 1;
-  const pct = (n: number) => Math.round((n / denom) * 100);
+  // Open/click rates are measured against successfully-sent emails, not total
+  // attempts (a failed send can't be opened). Fall back to 1 to avoid /0.
+  const rateBase = sentCount || 1;
+  const pct = (n: number) => Math.round((n / rateBase) * 100);
+
+  // How many contacts match the current audience but have NOT been sent yet
+  // (backend is exactly-once, so a re-send only reaches these).
+  const sentEmails = new Set(recs.map((r) => r.email));
+  const remaining = audience.filter((c) => !sentEmails.has(c.email)).length;
+  const canSend = !!campaign && !sendMut.isPending && (isSent ? remaining > 0 : total > 0);
 
   // email preview: show {{name}} as a friendly placeholder
   const previewHtml = (campaign?.html ?? "").replace(/\{\{\s*name\s*\}\}/gi, "there");
@@ -114,6 +123,13 @@ export default function CampaignSendPage() {
 
   const fromLine = brand ? `${brand.name} <no-reply@${brand.domain}>` : "…";
 
+  // send button label
+  const sendLabel = sendMut.isPending
+    ? "Sending…"
+    : isSent
+      ? remaining > 0 ? `Send to ${remaining} more →` : "Sent"
+      : `Send to ${total} →`;
+
   return (
     <div className="flex min-w-0 flex-col" style={{ height: "100vh" }}>
       {/* ===== Top action bar ===== */}
@@ -125,17 +141,17 @@ export default function CampaignSendPage() {
         </div>
         <StatusPill sent={isSent} />
         <div className="flex-1" />
-        <Button variant="outline" size="sm" onClick={() => setTestOpen(true)} disabled={isSent}>
+        <Button variant="outline" size="sm" onClick={() => setTestOpen(true)}>
           Send test
         </Button>
         <Button
           size="sm"
           onClick={() => setConfirmOpen(true)}
-          disabled={isSent || total === 0 || sendMut.isPending || !campaign}
+          disabled={!canSend}
           style={{ background: "var(--sidebar-primary)", color: "white" }}
         >
           <Send className="size-4" />
-          {isSent ? "Sent" : sendMut.isPending ? "Sending…" : `Send to ${total} →`}
+          {sendLabel}
         </Button>
       </div>
 
@@ -151,36 +167,53 @@ export default function CampaignSendPage() {
               <Settings2 className="size-4" /> Settings
             </button>
           )}
-          <div className="mx-auto flex max-w-[520px] flex-col items-center gap-4">
+          <div className="mx-auto flex w-full max-w-[560px] flex-col items-center gap-4">
             {isSent && (
-              <div className="grid w-full grid-cols-3 gap-2.5">
-                <StatCard label="Sent" value={sentCount || recs.length} />
-                <StatCard label="Opened" value={openedCount} pct={pct(openedCount)} good />
-                <StatCard label="Clicked" value={clickedCount} pct={pct(clickedCount)} good />
-              </div>
-            )}
-            <div className="inline-flex rounded-full border bg-card p-0.5 shadow-sm">
-              <DeviceBtn active={device === "desktop"} onClick={() => setDevice("desktop")} icon={Monitor} label="Desktop" />
-              <DeviceBtn active={device === "mobile"} onClick={() => setDevice("mobile")} icon={Smartphone} label="Mobile" />
-            </div>
-            <div
-              className="w-full overflow-hidden rounded-2xl bg-white shadow-[0_12px_40px_rgba(30,20,60,0.14)]"
-              style={{ maxWidth: device === "mobile" ? 300 : 520, transition: "max-width .2s ease" }}
-            >
-              <div className="border-b px-5 py-3.5" style={{ borderColor: "#f0f0f2" }}>
-                <div className="text-[13px]" style={{ color: "#8a8a92" }}>{fromLine}</div>
-                <div className="mt-1 text-[16px] font-semibold" style={{ color: "#131316" }}>
-                  {campaign?.subject ?? "…"}
+              <>
+                {/* Performance stats */}
+                <div className="grid w-full grid-cols-3 gap-2.5">
+                  <StatCard label="Sent" value={sentCount} />
+                  <StatCard label="Opened" value={openedCount} pct={pct(openedCount)} good />
+                  <StatCard label="Clicked" value={clickedCount} pct={pct(clickedCount)} good />
                 </div>
-              </div>
-              <iframe
-                title="Email preview"
-                sandbox=""
-                srcDoc={`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;padding:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.7;color:#2e2e35">${previewHtml || "<p style='color:#9a9aa2'>No content yet.</p>"}</body>`}
-                className="block w-full border-0"
-                style={{ height: 340, background: "white" }}
-              />
-            </div>
+                {/* After sending, the canvas shows results; toggle back to the email if needed. */}
+                <div className="inline-flex rounded-full border bg-card p-0.5 shadow-sm">
+                  <ToggleBtn active={canvasView === "recipients"} onClick={() => setCanvasView("recipients")} label="Recipients" />
+                  <ToggleBtn active={canvasView === "email"} onClick={() => setCanvasView("email")} label="Email" />
+                </div>
+              </>
+            )}
+
+            {isSent && canvasView === "recipients" ? (
+              <RecipientsTable recs={recs} />
+            ) : (
+              <>
+                {!isSent && (
+                  <div className="inline-flex rounded-full border bg-card p-0.5 shadow-sm">
+                    <ToggleBtn active={device === "desktop"} onClick={() => setDevice("desktop")} icon={Monitor} label="Desktop" />
+                    <ToggleBtn active={device === "mobile"} onClick={() => setDevice("mobile")} icon={Smartphone} label="Mobile" />
+                  </div>
+                )}
+                <div
+                  className="w-full overflow-hidden rounded-2xl bg-white shadow-[0_12px_40px_rgba(30,20,60,0.14)]"
+                  style={{ maxWidth: device === "mobile" ? 300 : 520, transition: "max-width .2s ease" }}
+                >
+                  <div className="border-b px-5 py-3.5" style={{ borderColor: "#f0f0f2" }}>
+                    <div className="text-[13px]" style={{ color: "#8a8a92" }}>{fromLine}</div>
+                    <div className="mt-1 text-[16px] font-semibold" style={{ color: "#131316" }}>
+                      {campaign?.subject ?? "…"}
+                    </div>
+                  </div>
+                  <iframe
+                    title="Email preview"
+                    sandbox=""
+                    srcDoc={`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;padding:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.7;color:#2e2e35">${previewHtml || "<p style='color:#9a9aa2'>No content yet.</p>"}</body>`}
+                    className="block w-full border-0"
+                    style={{ height: 340, background: "white" }}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -210,7 +243,9 @@ export default function CampaignSendPage() {
                 >
                   {total}
                 </span>
-                <span className="text-[13px] text-muted-foreground">people will receive this</span>
+                <span className="text-[13px] text-muted-foreground">
+                  {isSent ? "people match now" : "people will receive this"}
+                </span>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {(Object.keys(breakdown) as ContactType[]).map((t) => (
@@ -219,6 +254,11 @@ export default function CampaignSendPage() {
                   </span>
                 ))}
               </div>
+              {isSent && remaining > 0 && (
+                <div className="mt-2 text-[12px] text-muted-foreground">
+                  {remaining} not yet sent — a re-send reaches only those.
+                </div>
+              )}
               <button
                 onClick={() => setRecOpen(true)}
                 className="mt-2.5 text-[12.5px] font-medium underline underline-offset-2"
@@ -244,10 +284,9 @@ export default function CampaignSendPage() {
                   return (
                     <button
                       key={a.value}
-                      onClick={() => !isSent && toggleType(a.value)}
-                      disabled={isSent}
+                      onClick={() => toggleType(a.value)}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-muted disabled:opacity-60",
+                        "flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-muted",
                         on && "border-[color:var(--sidebar-primary)] bg-[color-mix(in_oklch,var(--sidebar-primary)_5%,transparent)]"
                       )}
                     >
@@ -273,8 +312,8 @@ export default function CampaignSendPage() {
 
             <Accordion num={2} title="Filters" summary={[plan, company].filter(Boolean).join(", ") || "None"}
               openState={open.filters} onToggle={() => setOpen((o) => ({ ...o, filters: !o.filters }))}>
-              <FilterSelect label="Plan" value={plan} onChange={setPlan} options={planOptions} anyLabel="Any plan" disabled={isSent} />
-              <FilterSelect label="Company" value={company} onChange={setCompany} options={companyOptions} anyLabel="Any company" disabled={isSent} />
+              <FilterSelect label="Plan" value={plan} onChange={setPlan} options={planOptions} anyLabel="Any plan" />
+              <FilterSelect label="Company" value={company} onChange={setCompany} options={companyOptions} anyLabel="Any company" />
               {(plan || company) && (
                 <div className="flex flex-wrap gap-1.5">
                   {plan && <FilterChip label={plan} onClear={() => setPlan("")} />}
@@ -312,8 +351,8 @@ export default function CampaignSendPage() {
                     <span
                       className="grid size-[17px] flex-none place-items-center rounded-full text-[10px]"
                       style={{
-                        background: c.ok ? "color-mix(in oklch, var(--good, oklch(0.62 0.14 155)) 20%, transparent)" : "color-mix(in oklch, var(--destructive) 15%, transparent)",
-                        color: c.ok ? "oklch(0.55 0.14 155)" : "var(--destructive)",
+                        background: c.ok ? "color-mix(in oklch, var(--good) 20%, transparent)" : "color-mix(in oklch, var(--destructive) 15%, transparent)",
+                        color: c.ok ? "var(--good)" : "var(--destructive)",
                       }}
                     >
                       {c.ok ? <Check className="size-3" /> : <X className="size-3" />}
@@ -333,8 +372,11 @@ export default function CampaignSendPage() {
           <DialogHeader>
             <DialogTitle>Send this campaign?</DialogTitle>
             <DialogDescription>
-              <strong className="text-foreground">{total}</strong> people will receive
-              {" "}<strong className="text-foreground">“{campaign?.subject}”</strong>. This can’t be undone.
+              <strong className="text-foreground">{isSent ? remaining : total}</strong> people will receive
+              {" "}<strong className="text-foreground">“{campaign?.subject}”</strong>.
+              {isSent
+                ? " Contacts who already got it are skipped automatically."
+                : " This can’t be undone."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -365,11 +407,11 @@ export default function CampaignSendPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ===== Recipients ===== */}
+      {/* ===== Recipients (matched audience) ===== */}
       <Dialog open={recOpen} onOpenChange={setRecOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Recipients ({total})</DialogTitle>
+            <DialogTitle>Matching contacts ({total})</DialogTitle>
             <DialogDescription>These contacts match your audience and filters right now.</DialogDescription>
           </DialogHeader>
           <div className="max-h-[260px] overflow-y-auto rounded-lg border">
@@ -400,7 +442,7 @@ function StatusPill({ sent }: { sent: boolean }) {
       className="rounded-full px-2.5 py-0.5 text-[12px] font-semibold"
       style={
         sent
-          ? { background: "color-mix(in oklch, oklch(0.62 0.14 155) 16%, transparent)", color: "oklch(0.5 0.14 155)" }
+          ? { background: "color-mix(in oklch, var(--good) 16%, transparent)", color: "var(--good)" }
           : { background: "var(--muted)", color: "var(--muted-foreground)" }
       }
     >
@@ -409,7 +451,7 @@ function StatusPill({ sent }: { sent: boolean }) {
   );
 }
 
-function DeviceBtn({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof Monitor; label: string }) {
+function ToggleBtn({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon?: typeof Monitor; label: string }) {
   return (
     <button
       onClick={onClick}
@@ -418,7 +460,7 @@ function DeviceBtn({ active, onClick, icon: Icon, label }: { active: boolean; on
         active && "bg-muted text-foreground"
       )}
     >
-      <Icon className="size-3.5" /> {label}
+      {Icon && <Icon className="size-3.5" />} {label}
     </button>
   );
 }
@@ -426,10 +468,47 @@ function DeviceBtn({ active, onClick, icon: Icon, label }: { active: boolean; on
 function StatCard({ label, value, pct, good }: { label: string; value: number; pct?: number; good?: boolean }) {
   return (
     <div className="rounded-xl border bg-card p-3.5 text-center shadow-sm">
-      <div className={cn("font-mono text-2xl font-bold tabular-nums", good && "text-[oklch(0.55_0.14_155)]")}>{value}</div>
+      <div className={cn("font-mono text-2xl font-bold tabular-nums", good && "text-good")}>{value}</div>
       <div className="mt-0.5 text-[11px] text-muted-foreground">{label}</div>
-      {pct !== undefined && <div className="text-[11px] font-semibold text-[oklch(0.55_0.14_155)]">{pct}%</div>}
+      {pct !== undefined && <div className="text-[11px] font-semibold text-good">{pct}%</div>}
     </div>
+  );
+}
+
+function RecipientsTable({ recs }: { recs: { id: string; email: string; status: string; openedAt?: string | null; clickedAt?: string | null }[] }) {
+  return (
+    <div className="w-full overflow-hidden rounded-xl border bg-card">
+      <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 border-b bg-muted/50 px-4 py-2.5 text-[12px] font-semibold text-muted-foreground">
+        <span>Email</span><span>Status</span><span className="w-14 text-center">Opened</span><span className="w-14 text-center">Clicked</span>
+      </div>
+      <div className="max-h-[440px] overflow-y-auto">
+        {recs.length === 0 && <div className="px-4 py-10 text-center text-sm text-muted-foreground">No recipients yet.</div>}
+        {recs.map((r) => (
+          <div key={r.id} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 border-b px-4 py-2.5 text-[13px] last:border-b-0">
+            <span className="truncate text-muted-foreground">{r.email}</span>
+            <RecStatus status={r.status} />
+            <span className="w-14 text-center">{r.openedAt ? <Check className="mx-auto size-3.5 text-good" /> : <span className="text-muted-foreground">—</span>}</span>
+            <span className="w-14 text-center">{r.clickedAt ? <Check className="mx-auto size-3.5 text-good" /> : <span className="text-muted-foreground">—</span>}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RecStatus({ status }: { status: string }) {
+  const failed = status === "failed";
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+      style={
+        failed
+          ? { background: "color-mix(in oklch, var(--destructive) 12%, transparent)", color: "var(--destructive)" }
+          : { background: "color-mix(in oklch, var(--good) 16%, transparent)", color: "var(--good)" }
+      }
+    >
+      {status}
+    </span>
   );
 }
 
@@ -449,7 +528,7 @@ function Accordion({
   num: number; title: string; summary: string; summaryTone?: "ok" | "warn"; warn?: boolean;
   openState: boolean; onToggle: () => void; children: React.ReactNode;
 }) {
-  const tone = warn || summaryTone === "warn" ? "text-destructive" : summaryTone === "ok" ? "text-[oklch(0.55_0.14_155)]" : "text-muted-foreground";
+  const tone = warn || summaryTone === "warn" ? "text-destructive" : summaryTone === "ok" ? "text-good" : "text-muted-foreground";
   return (
     <div className="border-b">
       <button onClick={onToggle} className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left hover:bg-muted">
@@ -460,8 +539,8 @@ function Accordion({
           {num}
         </span>
         <span className="text-[13.5px] font-semibold">{title}</span>
-        {!openState && <span className={cn("ml-auto max-w-[150px] truncate text-[12.5px] tabular-nums", tone)}>{summary}</span>}
-        <ChevronRight className={cn("size-3.5 flex-none text-muted-foreground transition-transform", openState ? "rotate-90" : "", !openState ? "" : "ml-auto")} />
+        {!openState && <span className={cn("max-w-[150px] truncate text-[12.5px] tabular-nums", tone)}>{summary}</span>}
+        <ChevronRight className={cn("ml-auto size-3.5 flex-none text-muted-foreground transition-transform", openState && "rotate-90")} />
       </button>
       {openState && <div className="flex flex-col gap-2.5 px-4 pb-4">{children}</div>}
     </div>
@@ -469,16 +548,15 @@ function Accordion({
 }
 
 function FilterSelect({
-  label, value, onChange, options, anyLabel, disabled,
-}: { label: string; value: string; onChange: (v: string) => void; options: string[]; anyLabel: string; disabled?: boolean }) {
+  label, value, onChange, options, anyLabel,
+}: { label: string; value: string; onChange: (v: string) => void; options: string[]; anyLabel: string }) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-[12px] text-muted-foreground">{label}</span>
       <select
         value={value}
-        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="h-9 rounded-lg border bg-card px-2.5 text-[13.5px] disabled:opacity-60"
+        className="h-9 rounded-lg border bg-card px-2.5 text-[13.5px]"
       >
         <option value="">{anyLabel}</option>
         {options.map((o) => <option key={o} value={o}>{o}</option>)}

@@ -55,8 +55,13 @@ real emails delivered via Amazon SES.
   **④ Pre-send checklist**. Plus a persistent **recap** ("N people will receive
   this" + breakdown + **See exactly who** dialog), **Sender identity** (From /
   Reply-to), a **confirm dialog** before sending, and **after-send stats**
-  (Sent/Opened/Clicked with %). The right inspector **collapses/expands** (a floating
-  "Settings" button reopens it).
+  (Sent/Opened/Clicked with % of successfully-sent). After a send the center canvas
+  switches to a **per-recipient results table** (email · status · opened · clicked)
+  with a **Recipients ⇄ Email** toggle to flip back to the sent email. Re-sending is
+  allowed after a send — the button reads "Send to N more" and the backend's
+  exactly-once rule skips anyone who already got it. The right inspector
+  **collapses/expands** (a floating "Settings" button reopens it). A `--good` success
+  color token was added to `globals.css` (used for sent/opened/clicked accents).
 - Design: clean **Loops-style** — left sidebar (workspace switcher, search box, nav,
   user footer + theme toggle), soft **violet** accent, near-black buttons, light/dark.
   All colors/fonts are tokens in `src/app/globals.css` (change once → whole app).
