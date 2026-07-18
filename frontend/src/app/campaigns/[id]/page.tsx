@@ -145,7 +145,8 @@ function CampaignSend() {
     { ok: total > 0, label: total > 0 ? `Audience selected (${total} people)` : "No one matches yet" },
     { ok: true, label: "Unsubscribe link present" },
   ];
-  const allGood = checks.every((c) => c.ok);
+  const failingChecks = checks.filter((c) => !c.ok).length;
+  const allGood = failingChecks === 0;
 
   const fromLine = brand ? `${brand.name} <no-reply@${brand.domain}>` : "…";
 
@@ -368,7 +369,7 @@ function CampaignSend() {
               </div>
             </Accordion>
 
-            <Accordion num={4} title="Pre-send checklist" summary={allGood ? "All good" : "1 to fix"}
+            <Accordion num={4} title="Pre-send checklist" summary={allGood ? "All good" : `${failingChecks} to fix`}
               summaryTone={allGood ? "ok" : "warn"}
               openState={open.checklist} onToggle={() => setOpen((o) => ({ ...o, checklist: !o.checklist }))}>
               <div className="flex flex-col gap-2">
