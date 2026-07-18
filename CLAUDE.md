@@ -25,6 +25,13 @@ light/dark). Details, exact "done vs next", and run commands are in **PROGRESS.m
 as the visual reference for new screens. Demo URLs are listed in **PROGRESS.md**
 (§ Concept demos). When building filters/templates/analytics etc., match that look.
 
+**Styling — use theme tokens, not hardcoded colors.** Colors/fonts are design tokens in
+`frontend/src/app/globals.css` (change once → whole app; light/dark aware). Prefer the
+token classes: `text-foreground` / `text-muted-foreground`, `bg-primary` /
+`bg-background` / `bg-muted`, `border-input`, brand accent = **violet**, danger/required =
+**`text-destructive`** (e.g. required-field `*`). Avoid hardcoded Tailwind colors like
+`text-red-500`. Required fields: use `<Label required>…</Label>` (renders the `*`).
+
 **Dev scope (owner's decision):** build **everything possible with personal credentials
 first** (all features + self-test on verified emails), and do **SES production access +
 deploy LAST**, only at real launch (emailing actual customers). Don't block feature work
