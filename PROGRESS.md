@@ -129,6 +129,13 @@ stay LAST, only at real launch — see the "Dev scope" section above).
    (docker-compose + nginx + SSL on the company server).
 
 ## ⏭️ Not built yet — full backlog (Phase 2+)
+- **Unified table (own branch)** — one shared `DataTable` so every table (Contacts,
+  Recipients, Templates, Campaigns) looks identical. Agreed rules: same field order
+  everywhere (`#`, Email, Name, Type, Company, Plan, Country…); header slightly darker
+  + medium weight (not bold); every record cell incl. email light/muted (not bold, not
+  black); fixed column widths so columns line up across tables; Type/Status as
+  `rounded-full` pills; numbers `tabular-nums`; Open/Click as ✓/— with the real time on
+  hover (aggregate % stays in the stat cards). Send page's `TableShell` is the prototype.
 - **Working global search** (sidebar box is visual only).
 - **Saved segments** (contact `type`/`company` filter chips are done; saving a
   named segment + more filter fields still pending).
