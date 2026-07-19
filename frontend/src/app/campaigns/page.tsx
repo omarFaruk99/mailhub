@@ -8,10 +8,9 @@ import { PageHeader } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { Plus } from "lucide-react";
+import type { Campaign } from "@/lib/api";
 
 export default function CampaignsPage() {
   const { brand } = useBrand();
@@ -19,6 +18,13 @@ export default function CampaignsPage() {
   const router = useRouter();
 
   const campaigns = useQuery({ queryKey: ["campaigns", brandId], queryFn: () => api.campaigns(brandId!), enabled: !!brandId });
+
+  const columns: Column<Campaign>[] = [
+    { key: "name", header: "Name", width: 240, cell: (c) => <Link href={`/campaigns/${c.id}`} className="hover:underline">{c.name}</Link> },
+    { key: "category", header: "Category", cell: (c) => c.category },
+    { key: "subject", header: "Subject", cell: (c) => c.subject },
+    { key: "status", header: "Status", cell: (c) => <StatusBadge status={c.status} /> },
+  ];
 
   return (
     <>
@@ -35,35 +41,14 @@ export default function CampaignsPage() {
       <div className="w-full max-w-6xl p-6">
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(campaigns.data ?? []).map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">
-                      <Link href={`/campaigns/${c.id}`} className="hover:underline">{c.name}</Link>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{c.category}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.subject}</TableCell>
-                    <TableCell><StatusBadge status={c.status} /></TableCell>
-                  </TableRow>
-                ))}
-                {campaigns.data?.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
-                      No campaigns yet. Create one to get started.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+            <DataTable
+              indexed
+              loading={!campaigns.data}
+              columns={columns}
+              rows={campaigns.data ?? []}
+              rowKey={(c) => c.id}
+              empty="No campaigns yet. Create one to get started."
+            />
           </CardContent>
         </Card>
       </div>

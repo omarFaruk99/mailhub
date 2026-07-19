@@ -16,32 +16,18 @@ import {
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { Tag } from "@/components/ui/tag";
 import { Upload, Plus } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Chip } from "@/components/ui/chip";
-import type { ContactType } from "@/lib/api";
+import type { Contact, ContactType } from "@/lib/api";
 
-// Contact type options + how each looks as a small badge.
+// Contact type options.
 const TYPES: { value: ContactType; label: string }[] = [
   { value: "client", label: "Client" },
   { value: "prospect", label: "Prospect" },
   { value: "internal", label: "Internal" },
 ];
-const typeStyle: Record<string, string> = {
-  client: "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300",
-  prospect: "bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300",
-  internal: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
-};
-function TypeBadge({ type }: { type: string }) {
-  return (
-    <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize", typeStyle[type] || "bg-muted text-muted-foreground")}>
-      {type}
-    </span>
-  );
-}
 
 export default function ContactsPage() {
   const { brand } = useBrand();
@@ -67,6 +53,17 @@ export default function ContactsPage() {
   });
 
   const shown = (contacts.data ?? []).filter((c) => typeFilter === "all" || c.type === typeFilter);
+
+  // Shared contact column order/look (matches the send-page recipients table).
+  const columns: Column<Contact>[] = [
+    { key: "email", header: "Email", width: 280, cell: (c) => c.email },
+    { key: "name", header: "Name", cell: (c) => c.name || "—" },
+    { key: "type", header: "Type", cell: (c) => <Tag>{c.type}</Tag> },
+    { key: "company", header: "Company", cell: (c) => c.company || "—" },
+    { key: "plan", header: "Plan", cell: (c) => c.plan || "—" },
+    { key: "country", header: "Country", cell: (c) => c.country || "—" },
+    { key: "status", header: "Status", cell: (c) => <StatusBadge status={c.status} /> },
+  ];
 
   const importMut = useMutation({
     mutationFn: (file: File) => api.importCsv(brandId!, file),
@@ -149,39 +146,14 @@ export default function ContactsPage() {
 
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>Country</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {shown.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.name || "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.email}</TableCell>
-                    <TableCell><TypeBadge type={c.type} /></TableCell>
-                    <TableCell>{c.company || "—"}</TableCell>
-                    <TableCell>{c.plan || "—"}</TableCell>
-                    <TableCell>{c.country || "—"}</TableCell>
-                    <TableCell><StatusBadge status={c.status} /></TableCell>
-                  </TableRow>
-                ))}
-                {shown.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                      {contacts.data?.length ? "No contacts of this type." : "No contacts yet. Add one or import a CSV."}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+            <DataTable
+              indexed
+              loading={!contacts.data}
+              columns={columns}
+              rows={shown}
+              rowKey={(c) => c.id}
+              empty={contacts.data?.length ? "No contacts of this type." : "No contacts yet. Add one or import a CSV."}
+            />
           </CardContent>
         </Card>
       </div>
