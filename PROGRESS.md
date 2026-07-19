@@ -45,8 +45,23 @@ real emails delivered via Amazon SES.
   `/templates/new` & `/templates/[id]` — HTML box + **live iframe preview** + "start from
   a ready-made design"), **Campaigns** (create is a full **page** `/campaigns/new`;
   **"Start from template"** prefills subject+body+category, with live preview),
-  **Campaign detail** (send with **audience checkboxes** Client/Prospect/Internal +
-  plan/company filter + live "~N people" summary + open/click stats).
+  **Campaign detail / Send page** — **redesigned to a Loops-style 3-panel layout**
+  (`/campaigns/[id]`): top action bar (breadcrumb + status + Send test + Send), a
+  center **email preview canvas** (Desktop/Mobile toggle, live iframe of the campaign
+  HTML), and a right **inspector** with collapsible **accordion** sections —
+  **① Audience** (checkboxes Client/Prospect/Internal with live per-type counts),
+  **② Filters** (plan + company dropdowns populated from the brand's contacts, shown
+  as removable chips), **③ When to send** (Send now; Schedule = "Soon"),
+  **④ Pre-send checklist**. Plus a persistent **recap** ("N people will receive
+  this" + breakdown + **See exactly who** dialog), **Sender identity** (From /
+  Reply-to), a **confirm dialog** before sending, and **after-send stats**
+  (Sent/Opened/Clicked with % of successfully-sent). After a send the center canvas
+  switches to a **per-recipient results table** (email · status · opened · clicked)
+  with a **Recipients ⇄ Email** toggle to flip back to the sent email. Re-sending is
+  allowed after a send — the button reads "Send to N more" and the backend's
+  exactly-once rule skips anyone who already got it. The right inspector
+  **collapses/expands** (a floating "Settings" button reopens it). A `--good` success
+  color token was added to `globals.css` (used for sent/opened/clicked accents).
 - Design: clean **Loops-style** — left sidebar (workspace switcher, search box, nav,
   user footer + theme toggle), soft **violet** accent, near-black buttons, light/dark.
   All colors/fonts are tokens in `src/app/globals.css` (change once → whole app).
@@ -114,6 +129,13 @@ stay LAST, only at real launch — see the "Dev scope" section above).
    (docker-compose + nginx + SSL on the company server).
 
 ## ⏭️ Not built yet — full backlog (Phase 2+)
+- **Unified table (own branch)** — one shared `DataTable` so every table (Contacts,
+  Recipients, Templates, Campaigns) looks identical. Agreed rules: same field order
+  everywhere (`#`, Email, Name, Type, Company, Plan, Country…); header slightly darker
+  + medium weight (not bold); every record cell incl. email light/muted (not bold, not
+  black); fixed column widths so columns line up across tables; Type/Status as
+  `rounded-full` pills; numbers `tabular-nums`; Open/Click as ✓/— with the real time on
+  hover (aggregate % stays in the stat cards). Send page's `TableShell` is the prototype.
 - **Working global search** (sidebar box is visual only).
 - **Saved segments** (contact `type`/`company` filter chips are done; saving a
   named segment + more filter fields still pending).

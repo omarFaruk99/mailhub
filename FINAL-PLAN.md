@@ -109,6 +109,7 @@ Draft (তৈরি) → Review (পরীক্ষা) → Approve (অনু�
 | **SNS webhook signature verify** | ভুয়া bounce event ঢোকানো ঠেকায় (security) |
 | **Exactly-once sending** | worker crash করলেও একজন একবারই মেইল পায় |
 | **Branded tracking domain** (`click.brand.com`) — unsubscribe/open/click লিংক নিজের subdomain দিয়ে যাবে, raw backend ডোমেইনের বদলে | **সবার শেষে করব** — জরুরি না, marketing/transactional subdomain সেটাপের সাথেই একসাথে করা যাবে (বাড়তি খরচ/কাজ প্রায় শূন্য) |
+| **Failed-send retry (ভবিষ্যতে)** — কোনো মেইল `failed` হলে (নেটওয়ার্ক/SES সমস্যায় *যেতেই পারল না* — bounce নয়) এখন তার recipient-row তৈরি হয়ে যায়, আর exactly-once নিয়মে সেটা আর retry হয় না; send পেজ "Sent" দেখায়। | **SES production-এর সময় করব** — failed recipient আলাদা করে চেনা ও **শুধু ওগুলো** আবার পাঠানোর ("Retry failed") সুযোগ যোগ করতে হবে (ডুপ্লিকেট ছাড়া)। এখন verified টেস্ট ইমেইলে পাঠানো হয় বলে জরুরি না। |
 
 ### ২০২৬ Bulk Sender নিয়ম (Google / Yahoo / Microsoft)
 > **নোট:** "bulk sender" = দিনে ৫,০০০+ মেইল। আপনার volume (৭০০–৮০০ একসাথে, মাসে
@@ -143,6 +144,10 @@ Draft (তৈরি) → Review (পরীক্ষা) → Approve (অনু�
 - **ফাইল** → সাধারণত download link (R2); ছোট দরকারি ফাইল হলে সত্যিকারের attachment
 - A/B testing (subject/content)
 - Test send + mobile/desktop preview + spam-score check
+- **Preheader / preview text** (inbox-এ subject-এর পাশে যে ছোট লেখা দেখায়) —
+  **optional/future**; এটা template editor-এর অংশ, send স্ক্রিনের না
+- **Undo send** (পাঠানোর পর ৩০ সেকেন্ড ফেরানোর সুযোগ, Gmail-এর মতো) —
+  **optional/future**; এখন confirm popup দিয়েই ভুল ঠেকানো হচ্ছে
 
 ### Campaign
 - **Category (client দেখে ও preference-এ বেছে নেয়):**
