@@ -6,9 +6,8 @@ import { useBrand } from "@/lib/use-brand";
 import { PageHeader } from "@/components/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import type { Campaign } from "@/lib/api";
 
 export default function Dashboard() {
   const { brand } = useBrand();
@@ -18,6 +17,13 @@ export default function Dashboard() {
 
   const subscribed = contacts.data?.filter((c) => c.status === "subscribed").length ?? 0;
   const sent = campaigns.data?.filter((c) => c.status === "sent").length ?? 0;
+
+  const columns: Column<Campaign>[] = [
+    { key: "name", header: "Name", width: 240, cell: (c) => <Link href={`/campaigns/${c.id}`} className="hover:underline">{c.name}</Link> },
+    { key: "category", header: "Category", cell: (c) => c.category },
+    { key: "status", header: "Status", cell: (c) => <StatusBadge status={c.status} /> },
+    { key: "created", header: "Created", align: "right", tabular: true, cell: (c) => new Date(c.createdAt).toLocaleDateString() },
+  ];
 
   return (
     <>
@@ -34,36 +40,15 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="text-base">Recent campaigns</CardTitle>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(campaigns.data ?? []).slice(0, 6).map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">
-                      <Link href={`/campaigns/${c.id}`} className="hover:underline">{c.name}</Link>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{c.category}</TableCell>
-                    <TableCell><StatusBadge status={c.status} /></TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {new Date(c.createdAt).toLocaleDateString()}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {campaigns.data?.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">No campaigns yet.</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+          <CardContent className="p-0">
+            <DataTable
+              indexed
+              loading={!campaigns.data}
+              columns={columns}
+              rows={(campaigns.data ?? []).slice(0, 6)}
+              rowKey={(c) => c.id}
+              empty="No campaigns yet."
+            />
           </CardContent>
         </Card>
       </div>

@@ -129,13 +129,19 @@ stay LAST, only at real launch — see the "Dev scope" section above).
    (docker-compose + nginx + SSL on the company server).
 
 ## ⏭️ Not built yet — full backlog (Phase 2+)
-- **Unified table (own branch)** — one shared `DataTable` so every table (Contacts,
-  Recipients, Templates, Campaigns) looks identical. Agreed rules: same field order
-  everywhere (`#`, Email, Name, Type, Company, Plan, Country…); header slightly darker
-  + medium weight (not bold); every record cell incl. email light/muted (not bold, not
-  black); fixed column widths so columns line up across tables; Type/Status as
-  `rounded-full` pills; numbers `tabular-nums`; Open/Click as ✓/— with the real time on
-  hover (aggregate % stays in the stat cards). Send page's `TableShell` is the prototype.
+- **Unified table** ✅ mostly done — shared `DataTable` (`components/ui/data-table.tsx`)
+  + muted `Tag` (`components/ui/tag.tsx`) now used by **Contacts, Campaigns, Templates,
+  Dashboard**. Rules applied: same field order; header darker + medium (not bold); record
+  cells (incl. email) muted; fixed column widths; `indexed` prop adds a shared `#`; inset
+  first/last column padding; Type = muted `Tag`, Status = coloured `StatusBadge` (the one
+  loud element); `loading` prop avoids a false-empty flash; `emphasis` column option for a
+  reliable darker column.
+  - **REMAINING (#1, own follow-up):** the **send page** (`campaigns/[id]/page.tsx`) still
+    uses its own `TableShell` / `ContactHead` / `ContactCells` — visually identical but a
+    parallel implementation, so the contact columns are defined twice and can drift.
+    Migrate the send-page recipients + audience-preview tables onto `DataTable` (keep the
+    toolbar/search/footer wrapper) to make it truly single-source. Deferred to protect the
+    just-shipped send page; do it carefully with verification.
 - **Working global search** (sidebar box is visual only).
 - **Saved segments** (contact `type`/`company` filter chips are done; saving a
   named segment + more filter fields still pending).

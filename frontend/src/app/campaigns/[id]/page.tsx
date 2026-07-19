@@ -19,6 +19,7 @@ import {
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
+import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 import {
   Send, Monitor, Smartphone, ChevronRight, ChevronDown, PanelRightClose, Settings2, Check, X, Search,
@@ -652,7 +653,7 @@ function ContactCells({ index, email, contact }: { index: number; email: string;
       <TableCell className="text-muted-foreground tabular-nums">{index + 1}</TableCell>
       <TableCell className="text-muted-foreground">{email}</TableCell>
       <TableCell className="text-muted-foreground">{contact?.name || "—"}</TableCell>
-      <TableCell className="text-muted-foreground">{contact ? TYPE_LABEL[contact.type] : "—"}</TableCell>
+      <TableCell>{contact ? <Tag>{TYPE_LABEL[contact.type]}</Tag> : <span className="text-muted-foreground">—</span>}</TableCell>
       <TableCell className="text-muted-foreground">{contact?.company || "—"}</TableCell>
       <TableCell className="text-muted-foreground">{contact?.plan || "—"}</TableCell>
       <TableCell className="text-muted-foreground">{contact?.country || "—"}</TableCell>
