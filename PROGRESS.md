@@ -129,19 +129,22 @@ stay LAST, only at real launch — see the "Dev scope" section above).
    (docker-compose + nginx + SSL on the company server).
 
 ## ⏭️ Not built yet — full backlog (Phase 2+)
-- **Unified table** ✅ mostly done — shared `DataTable` (`components/ui/data-table.tsx`)
+- **Unified table** ✅ **DONE** — shared `DataTable` (`components/ui/data-table.tsx`)
   + muted `Tag` (`components/ui/tag.tsx`) now used by **Contacts, Campaigns, Templates,
-  Dashboard**. Rules applied: same field order; header darker + medium (not bold); record
-  cells (incl. email) muted; fixed column widths; `indexed` prop adds a shared `#`; inset
-  first/last column padding; Type = muted `Tag`, Status = coloured `StatusBadge` (the one
-  loud element); `loading` prop avoids a false-empty flash; `emphasis` column option for a
-  reliable darker column.
-  - **REMAINING (#1, own follow-up):** the **send page** (`campaigns/[id]/page.tsx`) still
-    uses its own `TableShell` / `ContactHead` / `ContactCells` — visually identical but a
-    parallel implementation, so the contact columns are defined twice and can drift.
-    Migrate the send-page recipients + audience-preview tables onto `DataTable` (keep the
-    toolbar/search/footer wrapper) to make it truly single-source. Deferred to protect the
-    just-shipped send page; do it carefully with verification.
+  Dashboard, AND the send page**. Rules applied: same field order; header darker + medium
+  (not bold); record cells (incl. email) muted; fixed column widths; `indexed` prop adds a
+  shared `#`; inset first/last column padding; Type = muted `Tag`, Status = coloured
+  `StatusBadge` (the one loud element); `loading` prop avoids a false-empty flash;
+  `emphasis` column option for a reliable darker column.
+  - ✅ **Send page migrated** (PR #6, branch `claude/send-page-datatable`, merged
+    2026-07-20): recipients + audience-preview tables now use `DataTable` via a shared
+    `contactColumns` helper (focused columns `# · Email · Name · Type` + `Status/Opened/
+    Clicked` after send; Company/Plan/Country dropped as segmentation-only). Same PR also
+    refined the send page's **email preview**: iframe auto-sizes so header+body scroll as
+    one; bigger desktop frame; zoom 50–100%; compact header; **mobile** scales the whole
+    card to a phone frame (no horizontal scroll). Plus fixes: page horizontal-overflow,
+    canvas/inspector header-border alignment, and default tab (sent→Recipients,
+    draft→Email Preview) with a loading gate so no wrong-tab flash on reload.
 - **Working global search** (sidebar box is visual only).
 - **Saved segments** (contact `type`/`company` filter chips are done; saving a
   named segment + more filter fields still pending).
