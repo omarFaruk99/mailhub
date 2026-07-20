@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,9 +10,7 @@ import { useBrand } from "@/lib/use-brand";
 import type { Contact, Recipient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogClose,
 } from "@/components/ui/dialog";
@@ -39,8 +37,17 @@ const AUDIENCE: { value: ContactType; label: string; desc: string }[] = [
   { value: "prospect", label: "Prospects", desc: "Potential customers" },
   { value: "internal", label: "Internal", desc: "Our own colleagues" },
 ];
-const TYPE_LABEL: Record<ContactType, string> = { client: "Client", prospect: "Prospect", internal: "Internal" };
-const ZOOM_LEVELS = [50, 75, 100, 125, 150];
+// Zoom only goes DOWN from 100%: a real email is ~600px wide, so >100% would make
+// the preview overflow the stage and hide part of the email. Zooming out lets you
+// see more of a long email at once.
+const ZOOM_LEVELS = [50, 60, 70, 80, 90, 100];
+
+// Preview frame widths. EMAIL_W is the email's real design width; on Mobile the
+// email is rendered at EMAIL_W then scaled DOWN to MOBILE_W to fit the phone frame
+// (exactly how a real phone shows a non-responsive email) — so no horizontal scroll.
+const EMAIL_W = 600;
+const DESKTOP_W = 680;
+const MOBILE_W = 380;
 
 // The email preview mimics a real inbox, which renders on a white card with dark
 // text regardless of the app's light/dark theme. So these are intentionally fixed
@@ -80,8 +87,19 @@ function CampaignSend() {
   const [plan, setPlan] = useState("");
   const [company, setCompany] = useState("");
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  // Email preview auto-height: the iframe grows to its content's full height so the
+  // whole card (header + body) scrolls together in the stage — like reading a real
+  // email — instead of the body scrolling inside a small fixed inner window.
+  const previewRef = useRef<HTMLIFrameElement>(null);
+  const previewRoRef = useRef<ResizeObserver | null>(null);
+  const [previewHeight, setPreviewHeight] = useState(600);
   const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [canvasView, setCanvasView] = useState<"recipients" | "email">("email");
+  // The active canvas tab is DERIVED, not stored: a sent campaign defaults to
+  // Recipients (its results), a draft to Email Preview — until the user explicitly
+  // picks a tab, which sets viewOverride and then wins. Deriving (instead of syncing
+  // via an effect) avoids cascading re-renders. `canvasView` is computed below,
+  // once `isSent` is known.
+  const [viewOverride, setViewOverride] = useState<"recipients" | "email" | null>(null);
   const [zoom, setZoom] = useState(100); // email-preview zoom %
   const [fullscreen, setFullscreen] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({ audience: true, filters: false, when: false, checklist: false });
@@ -127,7 +145,7 @@ function CampaignSend() {
       toast.success(`Sent ${r.sent} · skipped ${r.skippedSuppressed + r.skippedAlready} · failed ${r.failed}`);
       qc.invalidateQueries({ queryKey: ["recipients", id] });
       qc.invalidateQueries({ queryKey: ["campaigns", brandId] });
-      setCanvasView("recipients"); // jump to the results once the send finishes
+      setViewOverride("recipients"); // jump to the results once the send finishes
     },
     onError: (e: Error) => toast.error("Send failed: " + e.message),
   });
@@ -136,6 +154,14 @@ function CampaignSend() {
   // email → contact, so the results table can show each recipient's name & type
   const contactByEmail = new Map((contacts.data ?? []).map((c) => [c.email, c]));
   const isSent = campaign?.status === "sent" || recs.length > 0;
+  // sent → Recipients, draft → Email Preview, unless the user chose a tab.
+  const canvasView = viewOverride ?? (isSent ? "recipients" : "email");
+  // Until the campaign + recipients data have loaded we don't yet know `isSent`, so
+  // the canvas would briefly guess Email Preview and then jump to Recipients on a
+  // reload (a visible flash). While not ready, show a neutral loading state instead
+  // and don't mark either tab active, so the right tab opens directly once loaded.
+  const notReady = campaigns.isPending || recipients.isPending;
+
   const sentCount = recs.filter((r) => r.status === "sent").length;
   const openedCount = recs.filter((r) => r.openedAt).length;
   const clickedCount = recs.filter((r) => r.clickedAt).length;
@@ -152,6 +178,35 @@ function CampaignSend() {
 
   // email preview: show {{name}} as a friendly placeholder
   const previewHtml = (campaign?.html ?? "").replace(/\{\{\s*name\s*\}\}/gi, "there");
+  // Mobile: render the email at its real width then scale to fit the phone frame.
+  const isMobile = device === "mobile";
+  const emailScale = isMobile ? MOBILE_W / EMAIL_W : 1;
+
+  // Measure the email's rendered height and size the iframe to it (so the whole card
+  // scrolls as one). Reads the same-origin srcDoc document.
+  const measurePreview = () => {
+    const doc = previewRef.current?.contentDocument;
+    const de = doc?.documentElement;
+    if (!de) return;
+    let h = Math.max(de.scrollHeight ?? 0, doc.body?.scrollHeight ?? 0);
+    // A non-responsive email (fixed ~600px) overflows a narrow Mobile frame and shows
+    // a horizontal scrollbar, which eats ~16px of height. Add that back so the email
+    // still fits vertically with no stray vertical scrollbar.
+    if (de.scrollWidth > de.clientWidth) h += 16;
+    if (h) setPreviewHeight(h);
+  };
+  // On (re)load: measure, then watch the email body so any reflow — e.g. switching
+  // Desktop⇄Mobile changes the width and thus the height — re-measures exactly.
+  const onPreviewLoad = () => {
+    measurePreview();
+    const body = previewRef.current?.contentDocument?.body;
+    previewRoRef.current?.disconnect();
+    if (body) {
+      previewRoRef.current = new ResizeObserver(() => measurePreview());
+      previewRoRef.current.observe(body);
+    }
+  };
+  useEffect(() => () => previewRoRef.current?.disconnect(), []); // cleanup on unmount
 
   // checklist
   const checks = [
@@ -217,16 +272,20 @@ function CampaignSend() {
       {/* ===== Body: canvas + inspector ===== */}
       <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: inspectorOpen ? "1fr 350px" : "1fr 0px", transition: "grid-template-columns .2s ease" }}>
         {/* Canvas */}
-        <div className={cn("relative flex min-h-0 flex-col bg-background", fullscreen && "fixed inset-0 z-50")}>
+        <div className={cn("relative flex min-h-0 min-w-0 flex-col bg-background", fullscreen && "fixed inset-0 z-50")}>
           {/* --- toolbar: tabs (left) + view controls (right) --- */}
-          <div className="flex flex-wrap items-center gap-2.5 border-b px-5">
-            <div className="flex">
-              <CanvasTab active={canvasView === "recipients"} onClick={() => setCanvasView("recipients")} icon={Users} label="Recipients" />
-              <CanvasTab active={canvasView === "email"} onClick={() => setCanvasView("email")} icon={Mail} label="Email Preview" />
+          {/* min-h-12 (not fixed h-12) so this bar's bottom border lines up with the
+             inspector header on normal widths, but can GROW instead of overflowing
+             when the email controls wrap on a narrow canvas. The tabs stretch to the
+             bar's height (self-stretch) so the active underline sits on the border. */}
+          <div className="flex min-h-12 flex-wrap items-center gap-2.5 border-b px-5">
+            <div className="flex self-stretch">
+              <CanvasTab active={!notReady && canvasView === "recipients"} onClick={() => setViewOverride("recipients")} icon={Users} label="Recipients" />
+              <CanvasTab active={!notReady && canvasView === "email"} onClick={() => setViewOverride("email")} icon={Mail} label="Email Preview" />
             </div>
             <div className="flex-1" />
             {/* Device + zoom apply only to the email render */}
-            {canvasView === "email" && (
+            {!notReady && canvasView === "email" && (
               <div className="flex items-center gap-2 py-2">
                 <div className="inline-flex rounded-lg border bg-muted p-0.5">
                   <ToggleBtn active={device === "desktop"} onClick={() => setDevice("desktop")} icon={Monitor} label="Desktop" />
@@ -271,8 +330,10 @@ function CampaignSend() {
           </div>
 
           {/* --- stage --- */}
-          <div className="flex-1 overflow-auto bg-muted/40 px-6 py-8">
-            {canvasView === "recipients" ? (
+          <div className="flex-1 overflow-auto bg-muted/40 px-6 py-4">
+            {notReady ? (
+              <div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>
+            ) : canvasView === "recipients" ? (
               <div className="mx-auto flex h-full min-h-140 w-full max-w-240 flex-col gap-4">
                 {isSent && (
                   <div className="grid grid-cols-3 gap-2.5">
@@ -284,42 +345,42 @@ function CampaignSend() {
                 {isSent ? (
                   <RecipientsTable recs={recs} contactByEmail={contactByEmail} />
                 ) : (
-                  <AudiencePreview audience={audience} total={total} />
+                  <AudiencePreview audience={audience} total={total} loading={!contacts.data} />
                 )}
               </div>
             ) : (
-              <div className="mx-auto flex h-full min-h-140 w-full flex-col" style={{ maxWidth: device === "mobile" ? 380 : 960 }}>
-                {/* browser-window email preview; fills the stage height, `zoom` rescales */}
+              <div className="mx-auto flex w-full flex-col" style={{ maxWidth: isMobile ? MOBILE_W : DESKTOP_W }}>
+                {/* Email preview card. The iframe is auto-sized to the email's full
+                   height, so the whole card — header + body — scrolls together in the
+                   stage, like a real inbox. Desktop frame ≈ a real email's true width
+                   (~600px + margins). On Mobile the whole card is laid out at the email's
+                   real width (EMAIL_W) then zoomed down to the phone frame (MOBILE_W), so
+                   header AND body shrink together into a cohesive phone view (no oversized
+                   header; the sender/recipients line has room). `zoom` shrinks layout too,
+                   so the stage still scrolls correctly; the user's zoom control multiplies
+                   on top. */}
                 <div
-                  className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card shadow-[0_18px_50px_rgba(30,20,60,0.16)]"
-                  style={{ zoom: zoom / 100 }}
+                  className="flex flex-col overflow-hidden rounded-2xl border bg-card shadow-[0_18px_50px_rgba(30,20,60,0.16)]"
+                  style={{ width: isMobile ? EMAIL_W : undefined, zoom: (zoom / 100) * emailScale }}
                 >
-                  {/* window chrome */}
-                  <div
-                    className="flex items-center gap-2 border-b px-4 py-3"
-                    style={{ background: "color-mix(in oklch, var(--muted) 55%, var(--card))" }}
-                  >
-                    <span className="size-[11px] rounded-full" style={{ background: "#ff5f57" }} />
-                    <span className="size-[11px] rounded-full" style={{ background: "#febc2e" }} />
-                    <span className="size-[11px] rounded-full" style={{ background: "#28c840" }} />
-                  </div>
-                  {/* email-client header — Gmail style: subject on top, sender row below */}
-                  <div className="border-b px-5 py-4">
-                    <div className="mb-3.5 text-[18px] font-semibold text-foreground text-balance">
+                  {/* email-client header — Gmail style: subject on top, sender row below.
+                     Kept compact (and no decorative window-chrome bar) so a long email
+                     gets as much vertical room as possible on a laptop screen. */}
+                  <div className="border-b px-5 py-2.5">
+                    <div className="mb-1.5 text-[15px] font-semibold text-foreground text-balance">
                       {campaign?.subject ?? "…"}
                     </div>
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-center gap-2.5">
                       <span
-                        className="grid size-10 flex-none place-items-center rounded-full text-[14px] font-bold text-white"
+                        className="grid size-8 flex-none place-items-center rounded-full text-[12px] font-bold text-white"
                         style={{ background: "var(--sidebar-primary)" }}
                       >
                         {brandInitials}
                       </span>
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-[13.5px] font-semibold">{brand?.name ?? "…"}</span>
-                        <span className="truncate text-[12.5px] text-muted-foreground">{replyTo}</span>
-                        <span className="mt-0.5 text-[12px] text-muted-foreground tabular-nums">
-                          to {toCount} recipient{toCount === 1 ? "" : "s"}
+                      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                        <span className="truncate text-[13px] font-semibold">{brand?.name ?? "…"}</span>
+                        <span className="truncate text-[12px] text-muted-foreground">
+                          {replyTo} · to {toCount} recipient{toCount === 1 ? "" : "s"}
                         </span>
                       </span>
                       <span
@@ -335,13 +396,19 @@ function CampaignSend() {
                     </div>
                   </div>
                   {/* body: white reading pane; the real email is centred at 600px
-                     (its true width) so wide frames just add white margins */}
+                     (its true width) so wide frames just add white margins. The iframe
+                     height follows its content (measurePreview) so there is no inner
+                     scrollbar — the stage scrolls the whole card instead. sandbox keeps
+                     the email from running scripts; allow-same-origin lets us read its
+                     height (no allow-scripts, so it still cannot execute code). */}
                   <iframe
+                    ref={previewRef}
+                    onLoad={onPreviewLoad}
                     title="Email preview"
-                    sandbox=""
-                    srcDoc={`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.7;color:${EMAIL.body}"><div style="max-width:600px;margin:0 auto;padding:24px 26px">${previewHtml || `<p style='color:${EMAIL.placeholder}'>No content yet.</p>`}</div></body>`}
-                    className="block min-h-0 w-full flex-1 border-0"
-                    style={{ background: "white" }}
+                    sandbox="allow-same-origin"
+                    srcDoc={`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{overflow-y:hidden}</style><body style="margin:0;background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.7;color:${EMAIL.body}"><div style="max-width:${EMAIL_W}px;margin:0 auto;padding:24px 26px">${previewHtml || `<p style='color:${EMAIL.placeholder}'>No content yet.</p>`}</div></body>`}
+                    className="block w-full border-0"
+                    style={{ height: previewHeight, background: "white" }}
                   />
                 </div>
               </div>
@@ -353,7 +420,7 @@ function CampaignSend() {
         {/* Inspector */}
         {inspectorOpen && (
           <div className="overflow-y-auto border-l bg-card">
-            <div className="sticky top-0 z-10 flex items-center border-b bg-card px-4 py-3">
+            <div className="sticky top-0 z-10 flex h-12 items-center border-b bg-card px-4">
               <span className="text-[13px] font-semibold">Send settings</span>
               <button
                 onClick={() => setInspectorOpen(false)}
@@ -596,7 +663,7 @@ function CanvasTab({ active, onClick, icon: Icon, label }: { active: boolean; on
     <button
       onClick={onClick}
       className={cn(
-        "-mb-px flex items-center gap-2 border-b-2 border-transparent px-3 pb-3 pt-3 text-[13.5px] font-semibold text-muted-foreground hover:text-foreground",
+        "-mb-px flex items-center gap-2 border-b-2 border-transparent px-3 text-[13.5px] font-semibold text-muted-foreground hover:text-foreground",
         active && "text-foreground"
       )}
       style={active ? { borderBottomColor: "var(--sidebar-primary)", color: "var(--sidebar-primary)" } : undefined}
@@ -612,7 +679,9 @@ function TableShell({ toolbar, footer, children }: { toolbar: React.ReactNode; f
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border bg-card">
       <div className="flex flex-wrap items-center gap-2 border-b p-3">{toolbar}</div>
-      <div className="min-h-0 flex-1 overflow-auto px-3 py-1.5">{children}</div>
+      {/* No horizontal padding here: DataTable supplies its own first:pl-5/last:pr-5
+         inset, so the Email column lines up with the same column on other pages. */}
+      <div className="min-h-0 flex-1 overflow-auto py-1.5">{children}</div>
       <div className="border-t px-4 py-2 text-[12px] text-muted-foreground tabular-nums">{footer}</div>
     </div>
   );
@@ -633,38 +702,29 @@ function SearchBox({ value, onChange, className }: { value: string; onChange: (v
   );
 }
 
-// The shared contact columns (identical before and after a send).
-function ContactHead() {
-  return (
-    <>
-      <TableHead className="w-10 text-muted-foreground">#</TableHead>
-      <TableHead>Email</TableHead>
-      <TableHead>Name</TableHead>
-      <TableHead>Type</TableHead>
-      <TableHead>Company</TableHead>
-      <TableHead>Plan</TableHead>
-      <TableHead>Country</TableHead>
-    </>
-  );
-}
-function ContactCells({ index, email, contact }: { index: number; email: string; contact?: Contact }) {
-  return (
-    <>
-      <TableCell className="text-muted-foreground tabular-nums">{index + 1}</TableCell>
-      <TableCell className="text-muted-foreground">{email}</TableCell>
-      <TableCell className="text-muted-foreground">{contact?.name || "—"}</TableCell>
-      <TableCell>{contact ? <Tag>{TYPE_LABEL[contact.type]}</Tag> : <span className="text-muted-foreground">—</span>}</TableCell>
-      <TableCell className="text-muted-foreground">{contact?.company || "—"}</TableCell>
-      <TableCell className="text-muted-foreground">{contact?.plan || "—"}</TableCell>
-      <TableCell className="text-muted-foreground">{contact?.country || "—"}</TableCell>
-    </>
-  );
+// The shared contact columns (identical before and after a send). Deliberately a
+// focused subset — Email, Name, Type only. Company/Plan/Country are segmentation
+// fields that belong on the Contacts page; here the tables are about *who received
+// this send and what happened*, so those columns are dropped (keeps it readable and
+// lets the table fit without a horizontal scroll). Column order/look still matches
+// the Contacts page. Generic over the row type so both the audience preview (rows
+// are Contacts) and the recipients table (rows wrap a Recipient + its Contact)
+// reuse one definition.
+function contactColumns<T>(
+  getEmail: (row: T) => string,
+  getContact: (row: T) => Contact | undefined,
+): Column<T>[] {
+  return [
+    { key: "email", header: "Email", width: 280, cell: (r) => getEmail(r) },
+    { key: "name", header: "Name", cell: (r) => getContact(r)?.name || "—" },
+    { key: "type", header: "Type", cell: (r) => { const c = getContact(r); return c ? <Tag>{c.type}</Tag> : "—"; } },
+  ];
 }
 
 // Before a send, the Recipients tab previews who currently matches — read-only,
 // same table shape as the after-send results (minus the delivery columns).
 // Who receives is controlled by Audience + Filters, not per-contact selection.
-function AudiencePreview({ audience, total }: { audience: Contact[]; total: number }) {
+function AudiencePreview({ audience, total, loading }: { audience: Contact[]; total: number; loading?: boolean }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const rows = audience.filter(
@@ -683,21 +743,14 @@ function AudiencePreview({ audience, total }: { audience: Contact[]; total: numb
       }
       footer={`Showing ${rows.length} of ${total}`}
     >
-      <Table>
-        <TableHeader><TableRow><ContactHead /></TableRow></TableHeader>
-        <TableBody>
-          {rows.map((c, i) => (
-            <TableRow key={c.id}><ContactCells index={i} email={c.email} contact={c} /></TableRow>
-          ))}
-          {rows.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                {audience.length === 0 ? "No one matches yet." : "No one matches your search."}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+      <DataTable
+        indexed
+        loading={loading}
+        columns={contactColumns<Contact>((c) => c.email, (c) => c)}
+        rows={rows}
+        rowKey={(c) => c.id}
+        empty={audience.length === 0 ? "No one matches yet." : "No one matches your search."}
+      />
     </TableShell>
   );
 }
@@ -734,6 +787,16 @@ function RecipientsTable({ recs, contactByEmail }: { recs: Recipient[]; contactB
       return rec.email.toLowerCase().includes(q) || (contact?.name ?? "").toLowerCase().includes(q);
     });
 
+  // Contact columns (shared with the audience preview) + the delivery columns
+  // that only exist after a send: Status, Opened, Clicked.
+  type Row = { rec: Recipient; contact?: Contact };
+  const columns: Column<Row>[] = [
+    ...contactColumns<Row>((r) => r.rec.email, (r) => r.contact),
+    { key: "status", header: "Status", cell: ({ rec }) => <RecStatus status={rec.status} /> },
+    { key: "opened", header: "Opened", align: "center", cell: ({ rec }) => rec.openedAt ? <Check className="mx-auto size-3.5 text-good" /> : "—" },
+    { key: "clicked", header: "Clicked", align: "center", cell: ({ rec }) => rec.clickedAt ? <Check className="mx-auto size-3.5 text-good" /> : "—" },
+  ];
+
   return (
     <TableShell
       toolbar={
@@ -757,33 +820,13 @@ function RecipientsTable({ recs, contactByEmail }: { recs: Recipient[]; contactB
       }
       footer={`Showing ${rows.length} of ${recs.length}`}
     >
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <ContactHead />
-            <TableHead>Status</TableHead>
-            <TableHead className="text-center">Opened</TableHead>
-            <TableHead className="text-center">Clicked</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map(({ rec, contact }, i) => (
-            <TableRow key={rec.id}>
-              <ContactCells index={i} email={rec.email} contact={contact} />
-              <TableCell><RecStatus status={rec.status} /></TableCell>
-              <TableCell className="text-center">{rec.openedAt ? <Check className="mx-auto size-3.5 text-good" /> : <span className="text-muted-foreground">—</span>}</TableCell>
-              <TableCell className="text-center">{rec.clickedAt ? <Check className="mx-auto size-3.5 text-good" /> : <span className="text-muted-foreground">—</span>}</TableCell>
-            </TableRow>
-          ))}
-          {rows.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
-                {recs.length === 0 ? "No recipients yet." : "No recipients match your search."}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+      <DataTable
+        indexed
+        columns={columns}
+        rows={rows}
+        rowKey={({ rec }) => rec.id}
+        empty={recs.length === 0 ? "No recipients yet." : "No recipients match your search."}
+      />
     </TableShell>
   );
 }
