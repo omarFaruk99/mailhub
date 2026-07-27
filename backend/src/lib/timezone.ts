@@ -30,6 +30,22 @@ export function isValidTimeZone(timeZone: string): boolean {
   }
 }
 
+/** The wall clock this instant shows in `timeZone`, as "YYYY-MM-DDTHH:mm". */
+function wallClockIn(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  return `${get("year")}-${get("month")}-${get("day")}T${hour}:${get("minute")}`;
+}
+
 /**
  * Convert a wall-clock time ("2026-07-28T14:30") in `timeZone` to the UTC instant.
  * Returns null if the input is not a valid date/time or zone.
@@ -42,9 +58,21 @@ export function zonedTimeToUtc(localDateTime: string, timeZone: string): Date | 
   const asIfUtc = new Date(`${localDateTime}Z`);
   if (Number.isNaN(asIfUtc.getTime())) return null;
 
-  const firstGuess = new Date(asIfUtc.getTime() - offsetMs(asIfUtc, timeZone));
+  const offsetA = offsetMs(asIfUtc, timeZone);
+  const firstGuess = new Date(asIfUtc.getTime() - offsetA);
   // Near a DST change the offset at the guessed instant can differ from the one
-  // we used; re-measure there and correct. (A second pass is enough in practice.)
-  const corrected = new Date(asIfUtc.getTime() - offsetMs(firstGuess, timeZone));
-  return Number.isNaN(corrected.getTime()) ? null : corrected;
+  // we used; re-measure there and correct.
+  const offsetB = offsetMs(firstGuess, timeZone);
+  let result = new Date(asIfUtc.getTime() - offsetB);
+  if (Number.isNaN(result.getTime())) return null;
+
+  // Spring forward skips an hour, so a time inside the gap never happens. Reading
+  // it back gives a different clock time — and the naive answer lands an hour
+  // BEFORE what the user asked for, which would send early. Roll forward instead
+  // (02:30 in a 02:00→03:00 gap becomes 03:30), by taking the offset that yields
+  // the later instant. Never send earlier than the time on screen.
+  if (wallClockIn(result, timeZone) !== localDateTime.slice(0, 16)) {
+    result = new Date(asIfUtc.getTime() - Math.min(offsetA, offsetB));
+  }
+  return Number.isNaN(result.getTime()) ? null : result;
 }

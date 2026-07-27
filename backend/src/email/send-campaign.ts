@@ -166,7 +166,14 @@ export async function sendCampaign(campaignId: string, filter: SendFilter): Prom
   // scheduledAt/timezone are cleared too: a leftover past time pre-fills the
   // schedule picker with a moment that has gone, and the server then rejects it.
   // When it was sent is already recorded on every recipient row.
-  const finalStatus = sent === 0 && failed > 0 ? "failed" : "sent";
+  //
+  // "failed" means this campaign has never reached anybody — counted across ALL
+  // passes, not just this one. A "send to the remaining N" where those N fail
+  // must not relabel a campaign that already delivered to hundreds.
+  const deliveredEver = await prisma.campaignRecipient.count({
+    where: { campaignId: campaign.id, status: "sent" },
+  });
+  const finalStatus = deliveredEver === 0 && failed > 0 ? "failed" : "sent";
   await prisma.campaign.update({
     where: { id: campaign.id },
     data: { status: finalStatus, jobId: null, scheduledAt: null, timezone: null },
