@@ -76,8 +76,10 @@
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
   /* Chart series colours (categorical, fixed order — never cycled).
-     Validated for colour-blind separation against the card surface;
-     the dark block below is the same three hues re-stepped for dark. */
+     Colour-blind separation validated against the card surface in both modes;
+     the dark block below is the same three hues re-stepped for the dark surface.
+     Aqua sits just under 3:1 on the white card, so charts using it must also
+     carry visible labels (the legend totals) or a table view — both are present. */
   --series-1: #2a78d6; /* blue   — Sent */
   --series-2: #eb6834; /* orange — Opened */
   --series-3: #1baf7a; /* aqua   — Clicked */

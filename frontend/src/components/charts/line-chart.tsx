@@ -57,8 +57,13 @@ export function LineChart({
     return () => ro.disconnect();
   }, []);
 
+  // Before the first fetch there are no labels at all — draw the empty frame
+  // only, or the axis would render "Invalid Date".
   const n = labels.length;
-  const hasData = series.some((s) => s.values.some((v) => v > 0));
+  const hasData = n > 0 && series.some((s) => s.values.some((v) => v > 0));
+
+  // A shorter range can leave `hover` pointing past the end of the new data.
+  const hoverIndex = hover !== null && hover < n ? hover : null;
 
   const innerW = Math.max(width - PAD.left - PAD.right, 10);
   const innerH = HEIGHT - PAD.top - PAD.bottom;
@@ -91,6 +96,7 @@ export function LineChart({
         className="block touch-none select-none"
         onMouseLeave={() => setHover(null)}
         onMouseMove={(e) => {
+          if (n === 0) return;
           const box = e.currentTarget.getBoundingClientRect();
           const px = e.clientX - box.left;
           const i = Math.round(((px - PAD.left) / innerW) * (n - 1));
@@ -120,7 +126,7 @@ export function LineChart({
         ))}
 
         {/* X labels — first, middle, last only (never one per point) */}
-        {[0, Math.floor((n - 1) / 2), n - 1]
+        {(n === 0 ? [] : [0, Math.floor((n - 1) / 2), n - 1])
           .filter((i, idx, arr) => i >= 0 && arr.indexOf(i) === idx)
           .map((i) => (
             <text
@@ -137,10 +143,10 @@ export function LineChart({
         {hasData && (
           <>
             {/* Crosshair */}
-            {hover !== null && (
+            {hoverIndex !== null && (
               <line
-                x1={x(hover)}
-                x2={x(hover)}
+                x1={x(hoverIndex)}
+                x2={x(hoverIndex)}
                 y1={PAD.top}
                 y2={PAD.top + innerH}
                 stroke="var(--border)"
@@ -170,10 +176,10 @@ export function LineChart({
                     stroke="var(--card)"
                     strokeWidth={2}
                   />
-                  {hover !== null && (
+                  {hoverIndex !== null && (
                     <circle
-                      cx={x(hover)}
-                      cy={y(s.values[hover])}
+                      cx={x(hoverIndex)}
+                      cy={y(s.values[hoverIndex])}
                       r={4}
                       fill={s.color}
                       stroke="var(--card)"
@@ -194,20 +200,20 @@ export function LineChart({
       )}
 
       {/* Tooltip */}
-      {hasData && hover !== null && (
+      {hasData && hoverIndex !== null && (
         <div
           className="pointer-events-none absolute z-10 min-w-40 rounded-lg border bg-popover p-2.5 text-[12px] shadow-md"
           style={{
-            left: Math.min(Math.max(x(hover) - 80, 0), Math.max(width - 176, 0)),
+            left: Math.min(Math.max(x(hoverIndex) - 80, 0), Math.max(width - 176, 0)),
             top: PAD.top + 28,
           }}
         >
-          <div className="mb-1.5 font-medium">{formatLabel(labels[hover])}</div>
+          <div className="mb-1.5 font-medium">{formatLabel(labels[hoverIndex])}</div>
           {series.map((s) => (
             <div key={s.key} className="flex items-center gap-2 py-0.5">
               <span className="size-2 rounded-full" style={{ background: s.color }} />
               <span className="text-muted-foreground">{s.label}</span>
-              <span className="ml-auto font-medium tabular-nums">{s.values[hover]}</span>
+              <span className="ml-auto font-medium tabular-nums">{s.values[hoverIndex]}</span>
             </div>
           ))}
         </div>

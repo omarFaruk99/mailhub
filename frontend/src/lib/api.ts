@@ -55,6 +55,8 @@ export type StarterTemplate = { key: string; label: string; subject: string; cat
 // A rate is `null` (never 0) when there is nothing to divide by; the UI shows "—".
 export type Analytics = {
   days: number;
+  /** First day of the window (UTC midnight). */
+  windowStart: string;
   totals: {
     contacts: number;
     subscribed: number;
@@ -62,6 +64,8 @@ export type Analytics = {
     campaignsSent: number;
     sent: number;
     failed: number;
+    /** Rows stuck mid-send (a crashed send) — neither sent nor failed. */
+    pending: number;
     opened: number;
     clicked: number;
   };

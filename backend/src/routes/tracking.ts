@@ -14,8 +14,10 @@ router.get("/track/open", async (req, res) => {
   const r = String(req.query.r || "");
   if (r) {
     try {
-      await prisma.campaignRecipient.update({
-        where: { id: r },
+      // Record the FIRST open only. Overwriting on every re-open would move an
+      // old day's number to today and silently rewrite past analytics.
+      await prisma.campaignRecipient.updateMany({
+        where: { id: r, openedAt: null },
         data: { openedAt: new Date() },
       });
     } catch {
@@ -32,8 +34,9 @@ router.get("/track/click", async (req, res) => {
   const u = String(req.query.u || "");
   if (r) {
     try {
-      await prisma.campaignRecipient.update({
-        where: { id: r },
+      // First click only — same reason as the open pixel above.
+      await prisma.campaignRecipient.updateMany({
+        where: { id: r, clickedAt: null },
         data: { clickedAt: new Date() },
       });
     } catch {

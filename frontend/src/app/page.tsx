@@ -48,10 +48,10 @@ export default function Dashboard() {
           <Stat
             label="Emails sent"
             value={a ? a.totals.sent.toLocaleString() : "—"}
-            hint={a ? `${a.totals.campaignsSent} campaigns` : undefined}
+            hint={a ? "last 30 days" : undefined}
           />
-          <Stat label="Open rate" value={pct(a?.rates.open)} hint={a ? `${a.totals.opened} opened` : undefined} />
-          <Stat label="Click rate" value={pct(a?.rates.click)} hint={a ? `${a.totals.clicked} clicked` : undefined} />
+          <Stat label="Open rate" value={pct(a?.rates.open)} hint={a ? `${a.totals.opened} opened · 30 days` : undefined} />
+          <Stat label="Click rate" value={pct(a?.rates.click)} hint={a ? `${a.totals.clicked} clicked · 30 days` : undefined} />
         </div>
 
         <Card>
@@ -71,7 +71,7 @@ export default function Dashboard() {
             <LineChart
               labels={(a?.series ?? []).map((s) => s.date)}
               formatLabel={shortDate}
-              emptyMessage={analytics.isLoading ? "Loading…" : "No sends in this period."}
+              emptyMessage={!brandId || analytics.isPending ? "Loading…" : "No sends in this period."}
               series={[
                 { key: "sent", label: "Sent", color: "var(--series-1)", values: (a?.series ?? []).map((s) => s.sent) },
                 { key: "opened", label: "Opened", color: "var(--series-2)", values: (a?.series ?? []).map((s) => s.opened) },

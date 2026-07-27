@@ -38,6 +38,9 @@ export default function AnalyticsPage() {
     enabled: !!brandId,
   });
   const a = q.data;
+  // A query that is still disabled (no brand yet) reports isLoading=false in
+  // TanStack v5 — without the brand check the empty state flashes on first paint.
+  const loading = !brandId || q.isPending;
 
   const columns: Column<Row>[] = [
     {
@@ -95,12 +98,26 @@ export default function AnalyticsPage() {
       />
 
       <div className="flex w-full max-w-6xl flex-col gap-6 p-6">
-        {/* Headline numbers — all-time, from real send rows */}
+        {/* Every number below is scoped to the selected range. */}
+        <p className="-mb-2 text-sm text-muted-foreground">
+          Showing the last <span className="text-foreground">{days} days</span>. Emails count
+          on the day they were sent; a later open or click counts against that same day.
+        </p>
+
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Stat
             label="Emails sent"
             value={a ? a.totals.sent.toLocaleString() : "—"}
-            hint={a && a.totals.failed > 0 ? `${a.totals.failed} failed` : undefined}
+            hint={
+              a
+                ? [
+                    a.totals.failed > 0 ? `${a.totals.failed} failed` : null,
+                    a.totals.pending > 0 ? `${a.totals.pending} stuck` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || undefined
+                : undefined
+            }
           />
           <Stat
             label="Open rate"
@@ -124,14 +141,15 @@ export default function AnalyticsPage() {
           <CardHeader>
             <CardTitle className="text-base">Engagement</CardTitle>
             <CardDescription>
-              Emails sent, opened and clicked per day — last {days} days (UTC).
+              Emails sent per day, and how many of those were opened or clicked — last{" "}
+              {days} days (UTC).
             </CardDescription>
           </CardHeader>
           <CardContent>
             <LineChart
               labels={(a?.series ?? []).map((s) => s.date)}
               formatLabel={shortDate}
-              emptyMessage={q.isLoading ? "Loading…" : "No sends in this period."}
+              emptyMessage={loading ? "Loading…" : "No sends in this period."}
               series={[
                 { key: "sent", label: "Sent", color: "var(--series-1)", values: (a?.series ?? []).map((s) => s.sent) },
                 { key: "opened", label: "Opened", color: "var(--series-2)", values: (a?.series ?? []).map((s) => s.opened) },
@@ -146,8 +164,8 @@ export default function AnalyticsPage() {
           <CardHeader>
             <CardTitle className="text-base">Deliverability</CardTitle>
             <CardDescription>
-              Keep bounce under 5% and complaints under 0.1% — above that, Amazon SES can
-              block sending.
+              Share of the emails sent in the last {days} days. Keep bounce under 5% and
+              complaints under 0.1% — above that, Amazon SES can block sending.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-3">
@@ -178,12 +196,14 @@ export default function AnalyticsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Campaign performance</CardTitle>
-            <CardDescription>Only campaigns that have been sent appear here.</CardDescription>
+            <CardDescription>
+              All time, not the selected range — only campaigns that have been sent appear here.
+            </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <DataTable
               indexed
-              loading={q.isLoading}
+              loading={loading}
               columns={columns}
               rows={sentCampaigns}
               rowKey={(c) => c.id}
