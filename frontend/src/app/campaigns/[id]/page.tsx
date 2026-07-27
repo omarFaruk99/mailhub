@@ -270,7 +270,15 @@ function CampaignSend() {
   const recs = recipients.data ?? [];
   // email → contact, so the results table can show each recipient's name & type
   const contactByEmail = new Map((contacts.data ?? []).map((c) => [c.email, c]));
-  const isSent = campaign?.status === "sent" || recs.length > 0;
+  // "Has this campaign run?" — drives which canvas tab opens. A campaign whose
+  // every send failed has still run, and so has one with recipient rows from a
+  // send that was interrupted.
+  const isSent = campaign?.status === "sent" || campaign?.status === "failed" || recs.length > 0;
+  // Whether it can still be given a future time. Recipient rows alone must not
+  // block this: an interrupted send leaves rows behind but the campaign is a
+  // draft again, and the backend will happily schedule it (exactly-once means
+  // the people already reached are skipped).
+  const canSchedule = campaign?.status !== "sent" && campaign?.status !== "sending";
   // sent → Recipients, draft → Email Preview, unless the user chose a tab.
   const canvasView = viewOverride ?? (isSent ? "recipients" : "email");
   // Until the campaign + recipients data have loaded we don't yet know `isSent`, so
@@ -299,7 +307,7 @@ function CampaignSend() {
     !busy &&
     !isSending &&
     (whenMode === "later"
-      ? total > 0 && scheduleLooksValid && !isSent
+      ? total > 0 && scheduleLooksValid && canSchedule
       : isSent
         ? remaining > 0
         : total > 0);
@@ -389,7 +397,13 @@ function CampaignSend() {
           <span className="truncate font-semibold">{campaign?.name ?? "…"}</span>
         </div>
         <StatusPill
-          status={isSending ? "sending" : isSent ? "sent" : isScheduled ? "scheduled" : "draft"}
+          status={
+            isSending ? "sending"
+              : campaign?.status === "failed" ? "failed"
+                : isSent ? "sent"
+                  : isScheduled ? "scheduled"
+                    : "draft"
+          }
         />
         <div className="flex-1" />
         <Button variant="outline" size="sm" onClick={() => setTestOpen(true)}>
@@ -661,18 +675,17 @@ function CampaignSend() {
                   onClick={() => setWhenOverride("now")}
                   title="Send now"
                   desc="Goes out immediately"
-                  disabled={isSent}
                 />
                 <WhenOption
                   active={whenMode === "later"}
                   onClick={() => setWhenOverride("later")}
                   title="Schedule for later"
                   desc="Pick a date, time and timezone"
-                  disabled={isSent}
+                  disabled={!canSchedule}
                 />
               </div>
 
-              {whenMode === "later" && !isSent && (
+              {whenMode === "later" && canSchedule && (
                 <div className="flex flex-col gap-2.5 rounded-lg border p-3">
                   <label className="flex flex-col gap-1.5">
                     <span className="text-[12px] text-muted-foreground">Date &amp; time</span>
@@ -850,10 +863,18 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatusPill({ status }: { status: "sent" | "sending" | "scheduled" | "draft" }) {
-  const label = { sent: "Sent", sending: "Sending…", scheduled: "Scheduled", draft: "Draft" }[status];
+function StatusPill({ status }: { status: "sent" | "failed" | "sending" | "scheduled" | "draft" }) {
+  const label = {
+    sent: "Sent", failed: "Failed", sending: "Sending…", scheduled: "Scheduled", draft: "Draft",
+  }[status];
   const accent =
-    status === "sent" ? "var(--good)" : status === "scheduled" || status === "sending" ? "var(--sidebar-primary)" : null;
+    status === "sent"
+      ? "var(--good)"
+      : status === "failed"
+        ? "var(--destructive)"
+        : status === "scheduled" || status === "sending"
+          ? "var(--sidebar-primary)"
+          : null;
   return (
     <span
       className="rounded-full px-2.5 py-0.5 text-[12px] font-semibold"

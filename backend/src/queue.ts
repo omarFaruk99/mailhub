@@ -17,27 +17,33 @@ export function getQueue(): PgBoss | null {
 
 // One scheduled send. Runs with nobody on screen, so it re-reads everything it
 // needs from the database and is safe to run twice (see the guards below).
-async function runSendJob(campaignId: string, isLastAttempt: boolean) {
+async function runSendJob(campaignId: string, jobId: string, isLastAttempt: boolean) {
   const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
   if (!campaign) {
     console.warn(`[queue] campaign ${campaignId} no longer exists — skipping`);
     return;
   }
 
-  // Claim the campaign in ONE conditional write. Doing it as read-then-write
-  // would leave a window where "Cancel schedule" reports success while this job
-  // is already on its way to sending.
-  //   - "scheduled" → the normal case.
-  //   - "sending"   → a previous attempt died mid-send (crash / restart) and
-  //                   pg-boss handed the job back; re-running is safe because a
-  //                   recipient row is unique per (campaign, contact).
-  // Anything else — "draft" (cancelled) or "sent" — means this job is stale.
+  // Claim the campaign in ONE conditional write, matching BOTH the status and
+  // this exact job id.
+  //   - One write, because read-then-write leaves a window where "Cancel
+  //     schedule" reports success while this job is already on its way to sending.
+  //   - The job id, because `Campaign.jobId` is the single source of truth for
+  //     "which job may send this campaign". Cancelling a superseded job can fail
+  //     (queue down, already gone) and pg-boss's `standard` policy does not
+  //     deduplicate by singletonKey — so an orphaned job can still reach us. It
+  //     must not be able to send the campaign at a time nobody asked for.
+  // Status "sending" is accepted so a send interrupted by a crash can resume;
+  // that is safe because a recipient row is unique per (campaign, contact).
   const claimed = await prisma.campaign.updateMany({
-    where: { id: campaignId, status: { in: ["scheduled", "sending"] } },
+    where: { id: campaignId, jobId, status: { in: ["scheduled", "sending"] } },
     data: { status: "sending" },
   });
   if (claimed.count === 0) {
-    console.warn(`[queue] campaign ${campaignId} is "${campaign.status}" — skipping this job`);
+    console.warn(
+      `[queue] campaign ${campaignId} is "${campaign.status}" with job ${campaign.jobId ?? "none"}, ` +
+        `not this job (${jobId}) — skipping`
+    );
     return;
   }
 
@@ -60,6 +66,40 @@ async function runSendJob(campaignId: string, isLastAttempt: boolean) {
       await prisma.campaign.update({ where: { id: campaignId }, data: { status: "scheduled" } });
     }
     throw err;
+  }
+}
+
+/**
+ * A campaign left at "sending" when the process died is unreachable: every
+ * endpoint refuses it, and if its job also ran out of retries nothing will ever
+ * finish it. At startup no send can be in flight yet (one backend process), so
+ * anything still marked "sending" is wreckage from the last run — put it back to
+ * scheduled if its job is still queued, otherwise to draft, and say so in the log.
+ *
+ * NOTE: this assumes a single backend process, which is how we deploy. Running
+ * two would need a per-instance lock instead.
+ */
+async function recoverInterruptedSends(instance: PgBoss) {
+  const stuck = await prisma.campaign.findMany({
+    where: { status: "sending" },
+    select: { id: true, name: true, jobId: true },
+  });
+  for (const c of stuck) {
+    // Still a live job? Let it run again — exactly-once makes that safe.
+    const found = c.jobId
+      ? await instance.findJobs(SEND_QUEUE, { id: c.jobId }).catch(() => [])
+      : [];
+    const state = found[0]?.state;
+    const stillQueued = state === "created" || state === "retry" || state === "active";
+    await prisma.campaign.update({
+      where: { id: c.id },
+      data: stillQueued
+        ? { status: "scheduled" }
+        : { status: "draft", scheduledAt: null, timezone: null, jobId: null },
+    });
+    console.warn(
+      `[queue] campaign "${c.name}" was interrupted mid-send — reset to ${stillQueued ? "scheduled" : "draft"}`
+    );
   }
 }
 
@@ -99,10 +139,12 @@ export async function startQueue(): Promise<PgBoss | null> {
       { batchSize: 1, pollingIntervalSeconds: 10, includeMetadata: true },
       async (jobs: JobWithMetadata<SendJobData>[]) => {
         for (const job of jobs) {
-          await runSendJob(job.data.campaignId, job.retryCount >= job.retryLimit);
+          await runSendJob(job.data.campaignId, job.id, job.retryCount >= job.retryLimit);
         }
       }
     );
+
+    await recoverInterruptedSends(instance);
 
     boss = instance;
     console.log("[queue] pg-boss started");
