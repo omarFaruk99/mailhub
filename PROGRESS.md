@@ -1,6 +1,6 @@
 # PROGRESS — where we are
 
-_Last updated: 2026-07-16 · Read this first in a new session._
+_Last updated: 2026-07-27 · Read this first in a new session._
 
 ## ✅ Phase 1 (MVP) — BUILT & verified (local dev)
 
@@ -34,8 +34,22 @@ real emails delivered via Amazon SES.
   `GET /starter-templates` and **auto-seeded into every new brand** (`seedStarterTemplates`,
   called on brand create). `{{name}}` **merge tag** is replaced per recipient at send
   time (HTML-escaped, in `campaigns.ts`).
+- **Analytics**: `GET /brands/:brandId/analytics?days=N` (`src/routes/analytics.ts`) —
+  windowed totals + open/click rates, a zero-filled **daily series** for the last N days
+  (UTC buckets), all-time **deliverability** (bounce/complaint/unsubscribe), and
+  **per-campaign** performance. A rate is `null` (never 0) when there is nothing to
+  divide by, so the UI shows "—" instead of fake data.
+  - **Two scopes, on purpose:** engagement is a **cohort window** (an email counts on
+    its send day; its later open/click counts against that same day, so a rate can
+    never exceed 100%). **Deliverability is all-time** — `Suppression` is a *state*
+    table (one row per address, upserted in place), not an event log, so it cannot be
+    sliced by date. A true rolling bounce/complaint rate needs a per-event table →
+    do it with **SES production access** (see FINAL-PLAN.md §6).
+  - Open/click tracking records the **first** event only, so past days never change.
+  - `webhooks.ts` only **escalates** a suppression reason (complaint > bounce >
+    unsubscribe), never downgrades — a bounce can't be erased by a later event.
 - CORS enabled for the frontend.
-- Key files: `src/index.ts`, `src/routes/{brands,campaigns,templates,email,tracking,webhooks}.ts`,
+- Key files: `src/index.ts`, `src/routes/{brands,campaigns,templates,email,tracking,webhooks,analytics}.ts`,
   `src/email/ses.ts`, `src/prisma.ts`, `prisma/schema.prisma`, `prisma.config.ts`.
 
 ### Frontend — `frontend/` (Next.js 16 + shadcn/ui + Tailwind v4 + TanStack Query)
@@ -62,6 +76,16 @@ real emails delivered via Amazon SES.
   exactly-once rule skips anyone who already got it. The right inspector
   **collapses/expands** (a floating "Settings" button reopens it). A `--good` success
   color token was added to `globals.css` (used for sent/opened/clicked accents).
+- **Analytics** (`/analytics`, in the sidebar): range chips (7/30/90 days), four stat
+  tiles (Emails sent · Open rate · Click rate · Bounce rate), an **Engagement** line
+  chart (sent/opened/clicked per day, hover crosshair + tooltip), a **Deliverability**
+  card (bounce vs 5% · complaint vs 0.1% · unsubscribe, each with an icon + word so
+  status is never colour-alone), and a **Campaign performance** DataTable. The
+  **Dashboard** now shows the same real metrics + the 30-day chart.
+  - Chart is a small dependency-free SVG component (`components/charts/line-chart.tsx`) —
+    no chart library added. Series colours are new `--series-1/2/3` tokens in
+    `globals.css` (blue/orange/aqua, re-stepped for dark), validated for
+    colour-blind separation against the card surface.
 - Design: clean **Loops-style** — left sidebar (workspace switcher, search box, nav,
   user footer + theme toggle), soft **violet** accent, near-black buttons, light/dark.
   All colors/fonts are tokens in `src/app/globals.css` (change once → whole app).
@@ -116,15 +140,17 @@ to email **actual customers**. Until then keep building + self-testing on verifi
 ## ▶️ Recommended next steps (in order)
 All buildable + self-testable now with personal credentials (SES production + deploy
 stay LAST, only at real launch — see the "Dev scope" section above).
+0. ~~**Analytics dashboard**~~ ✅ **DONE** (branch `claude/analytics-dashboard`).
 1. **Scheduling** — send a campaign later (pick date/time, timezone).
-2. **Analytics dashboard** — real open/click/bounce numbers + simple charts (no fake data).
-3. **Saved segments + working global search** (contact `type`/`company` filters exist;
+2. **Saved segments + working global search** (contact `type`/`company` filters exist;
    save named segments + wire the sidebar search box).
+3. **Auto-pause (circuit breaker)** — stop sending when bounce/complaint spikes.
+   Small, and **mandatory before production**.
 4. **Teams + RBAC roles + approval workflow** (Draft→Review→Approve→Send) — one bigger
    chunk (approval needs roles).
-5. **Multi-brand** (brand switcher) **+ preference center** (per-category opt-out).
-6. **Template polish** — image **upload** button (needs Cloudflare R2 key) + a no-code
+5. **Template polish** — image **upload** button (needs Cloudflare R2 key) + a no-code
    editor (drag-and-drop / fill-in-fields) for non-coders.
+6. **Multi-brand** (brand switcher) **+ preference center** (per-category opt-out).
 7. **LAST, at launch:** SES **production access** (+ SPF/DMARC) and **deploy**
    (docker-compose + nginx + SSL on the company server).
 
@@ -148,12 +174,13 @@ stay LAST, only at real launch — see the "Dev scope" section above).
 - **Working global search** (sidebar box is visual only).
 - **Saved segments** (contact `type`/`company` filter chips are done; saving a
   named segment + more filter fields still pending).
-- **Dashboard widgets** to match the concept: engagement chart, deliverability card,
-  sparkline stat tiles. (Only add real data — don't fake metrics.)
+- **Dashboard widgets** ✅ **DONE** — engagement chart + deliverability card + real
+  stat tiles (see the Analytics entry above). Still open: per-tile sparklines and
+  device/country/email-client breakdowns (needs an `EmailEvent` table first).
 - **Template editor** ✅ done (template + HTML; ready-made starters auto-seeded;
   duplicate; Starter/Yours). Later: image **upload** button (R2), a no-code editor
   (drag-and-drop / fill-in-fields), per-team folders/brand kit.
-- **Automations**, **Analytics** screen.
+- **Automations**. (**Analytics** screen ✅ done.)
 - **Teams + RBAC roles**, **approval workflow** (Draft→Review→Approve→Send).
 - **Multi-brand** (brand switcher is single-brand now), **preference center**.
 - **SES production access** + SPF/DMARC + custom MAIL FROM (better inbox placement).

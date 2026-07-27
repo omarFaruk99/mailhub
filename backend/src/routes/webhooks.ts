@@ -14,13 +14,24 @@ function validate(msg: any): Promise<void> {
   });
 }
 
+// Suppression holds ONE row per address, so a second event has to decide what
+// the stored reason becomes. It only ever escalates — a complaint outranks a
+// bounce, a bounce outranks an unsubscribe. Downgrading would quietly erase a
+// bounce/complaint that the SES deliverability numbers are counted from.
+const SEVERITY: Record<string, number> = { unsubscribe: 1, bounce: 2, complaint: 3 };
+
 // Add an email to suppression for every brand it belongs to, and mark the contact.
 async function suppressEmail(email: string, reason: "bounce" | "complaint") {
   const contacts = await prisma.contact.findMany({ where: { email: email.toLowerCase() } });
   for (const c of contacts) {
+    const existing = await prisma.suppression.findUnique({
+      where: { brandId_email: { brandId: c.brandId, email: c.email } },
+    });
+    const keepExisting =
+      existing && (SEVERITY[existing.reason] ?? 0) >= SEVERITY[reason];
     await prisma.suppression.upsert({
       where: { brandId_email: { brandId: c.brandId, email: c.email } },
-      update: { reason },
+      update: keepExisting ? {} : { reason },
       create: { brandId: c.brandId, email: c.email, reason },
     });
     await prisma.contact.update({

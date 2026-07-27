@@ -51,6 +51,53 @@ export type TemplateInput = {
 };
 export type StarterTemplate = { key: string; label: string; subject: string; category: string; html: string };
 
+// Analytics — every number is computed from real send/open/click rows.
+// A rate is `null` (never 0) when there is nothing to divide by; the UI shows "—".
+export type Analytics = {
+  days: number;
+  /** First day of the window (UTC midnight). */
+  windowStart: string;
+  totals: {
+    contacts: number;
+    subscribed: number;
+    campaigns: number;
+    campaignsSent: number;
+    sent: number;
+    failed: number;
+    /** Rows stuck mid-send (a crashed send) — neither sent nor failed. */
+    pending: number;
+    opened: number;
+    clicked: number;
+  };
+  /** Engagement, scoped to the window. */
+  rates: { open: number | null; click: number | null };
+  /**
+   * Deliverability is ALL TIME on both sides of the division — Suppression is a
+   * state table, not an event log, so it cannot be sliced by date.
+   */
+  deliverability: {
+    sent: number;
+    bounce: number;
+    complaint: number;
+    unsubscribe: number;
+    rates: { bounce: number | null; complaint: number | null; unsubscribe: number | null };
+  };
+  series: { date: string; sent: number; opened: number; clicked: number }[];
+  campaigns: {
+    id: string;
+    name: string;
+    category: string;
+    status: string;
+    createdAt: string;
+    sentAt: string | null;
+    sent: number;
+    opened: number;
+    clicked: number;
+    openRate: number | null;
+    clickRate: number | null;
+  }[];
+};
+
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(API + path, {
     headers: { "Content-Type": "application/json" },
@@ -107,4 +154,7 @@ export const api = {
   deleteTemplate: (id: string) =>
     req<{ ok: boolean }>(`/templates/${id}`, { method: "DELETE" }),
   starterTemplates: () => req<StarterTemplate[]>("/starter-templates"),
+
+  analytics: (brandId: string, days = 30) =>
+    req<Analytics>(`/brands/${brandId}/analytics?days=${days}`),
 };

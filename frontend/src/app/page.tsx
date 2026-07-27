@@ -1,22 +1,34 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { useBrand } from "@/lib/use-brand";
 import { PageHeader } from "@/components/app-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { LineChart } from "@/components/charts/line-chart";
+import { LoadError } from "@/components/load-error";
 import type { Campaign } from "@/lib/api";
+
+// A rate is null when there is nothing to divide by — show "—", never a fake 0%.
+const pct = (r: number | null | undefined) => (r === null || r === undefined ? "—" : `${(r * 100).toFixed(1)}%`);
+
+const shortDate = (iso: string) =>
+  new Date(iso + "T00:00:00Z").toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 
 export default function Dashboard() {
   const { brand } = useBrand();
   const brandId = brand?.id;
-  const contacts = useQuery({ queryKey: ["contacts", brandId], queryFn: () => api.contacts(brandId!), enabled: !!brandId });
   const campaigns = useQuery({ queryKey: ["campaigns", brandId], queryFn: () => api.campaigns(brandId!), enabled: !!brandId });
-
-  const subscribed = contacts.data?.filter((c) => c.status === "subscribed").length ?? 0;
-  const sent = campaigns.data?.filter((c) => c.status === "sent").length ?? 0;
+  const analytics = useQuery({
+    queryKey: ["analytics", brandId, 30],
+    queryFn: () => api.analytics(brandId!, 30),
+    enabled: !!brandId,
+  });
+  const a = analytics.data;
+  const failed = analytics.isError || campaigns.isError;
 
   const columns: Column<Campaign>[] = [
     { key: "name", header: "Name", width: 240, cell: (c) => <Link href={`/campaigns/${c.id}`} className="hover:underline">{c.name}</Link> },
@@ -29,12 +41,60 @@ export default function Dashboard() {
     <>
       <PageHeader title="Dashboard" subtitle={brand ? `${brand.name} · ${brand.domain}` : "Loading…"} />
       <div className="flex w-full max-w-6xl flex-col gap-6 p-6">
+        {/* A failed fetch must not read as "this brand has no activity". */}
+        {failed && (
+          <LoadError
+            message={((analytics.error ?? campaigns.error) as Error)?.message}
+            onRetry={() => {
+              analytics.refetch();
+              campaigns.refetch();
+            }}
+          />
+        )}
+
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Stat label="Total contacts" value={contacts.data?.length ?? "—"} />
-          <Stat label="Subscribed" value={subscribed} />
-          <Stat label="Campaigns" value={campaigns.data?.length ?? "—"} />
-          <Stat label="Sent" value={sent} />
+          <Stat
+            label="Subscribed contacts"
+            value={a ? a.totals.subscribed.toLocaleString() : "—"}
+            hint={a ? `${a.totals.contacts} total` : undefined}
+          />
+          <Stat
+            label="Emails sent"
+            value={a ? a.totals.sent.toLocaleString() : "—"}
+            hint={a ? "last 30 days" : undefined}
+          />
+          <Stat label="Open rate" value={pct(a?.rates.open)} hint={a ? `${a.totals.opened} opened · 30 days` : undefined} />
+          <Stat label="Click rate" value={pct(a?.rates.click)} hint={a ? `${a.totals.clicked} clicked · 30 days` : undefined} />
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Engagement</CardTitle>
+            <CardDescription>Last 30 days (UTC).</CardDescription>
+            <CardAction>
+              <Link
+                href="/analytics"
+                className="flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
+              >
+                Full analytics <ArrowRight className="size-3.5" />
+              </Link>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <LineChart
+              labels={(a?.series ?? []).map((s) => s.date)}
+              formatLabel={shortDate}
+              emptyMessage={
+                failed ? "Could not load." : !brandId || analytics.isPending ? "Loading…" : "No sends in this period."
+              }
+              series={[
+                { key: "sent", label: "Sent", color: "var(--series-1)", values: (a?.series ?? []).map((s) => s.sent) },
+                { key: "opened", label: "Opened", color: "var(--series-2)", values: (a?.series ?? []).map((s) => s.opened) },
+                { key: "clicked", label: "Clicked", color: "var(--series-3)", values: (a?.series ?? []).map((s) => s.clicked) },
+              ]}
+            />
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -43,11 +103,11 @@ export default function Dashboard() {
           <CardContent className="p-0">
             <DataTable
               indexed
-              loading={!campaigns.data}
+              loading={!brandId || campaigns.isPending}
               columns={columns}
               rows={(campaigns.data ?? []).slice(0, 6)}
               rowKey={(c) => c.id}
-              empty="No campaigns yet."
+              empty={campaigns.isError ? "Could not load campaigns." : "No campaigns yet."}
             />
           </CardContent>
         </Card>
@@ -56,12 +116,13 @@ export default function Dashboard() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+function Stat({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
   return (
     <Card>
       <CardContent className="pt-6">
         <div className="text-sm text-muted-foreground">{label}</div>
-        <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{value}</div>
+        <div className="mt-2 text-3xl font-semibold tracking-tight">{value}</div>
+        <div className="mt-1 h-4 text-xs text-muted-foreground">{hint}</div>
       </CardContent>
     </Card>
   );
