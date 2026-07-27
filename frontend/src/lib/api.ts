@@ -51,6 +51,44 @@ export type TemplateInput = {
 };
 export type StarterTemplate = { key: string; label: string; subject: string; category: string; html: string };
 
+// Analytics — every number is computed from real send/open/click rows.
+// A rate is `null` (never 0) when there is nothing to divide by; the UI shows "—".
+export type Analytics = {
+  days: number;
+  totals: {
+    contacts: number;
+    subscribed: number;
+    campaigns: number;
+    campaignsSent: number;
+    sent: number;
+    failed: number;
+    opened: number;
+    clicked: number;
+  };
+  rates: {
+    open: number | null;
+    click: number | null;
+    bounce: number | null;
+    complaint: number | null;
+    unsubscribe: number | null;
+  };
+  suppressions: { bounce: number; complaint: number; unsubscribe: number; total: number };
+  series: { date: string; sent: number; opened: number; clicked: number }[];
+  campaigns: {
+    id: string;
+    name: string;
+    category: string;
+    status: string;
+    createdAt: string;
+    sentAt: string | null;
+    sent: number;
+    opened: number;
+    clicked: number;
+    openRate: number | null;
+    clickRate: number | null;
+  }[];
+};
+
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(API + path, {
     headers: { "Content-Type": "application/json" },
@@ -107,4 +145,7 @@ export const api = {
   deleteTemplate: (id: string) =>
     req<{ ok: boolean }>(`/templates/${id}`, { method: "DELETE" }),
   starterTemplates: () => req<StarterTemplate[]>("/starter-templates"),
+
+  analytics: (brandId: string, days = 30) =>
+    req<Analytics>(`/brands/${brandId}/analytics?days=${days}`),
 };

@@ -7,6 +7,7 @@ import campaignsRouter from "./routes/campaigns.js";
 import templatesRouter from "./routes/templates.js";
 import trackingRouter from "./routes/tracking.js";
 import webhooksRouter from "./routes/webhooks.js";
+import analyticsRouter from "./routes/analytics.js";
 
 const app = express();
 app.use(cors()); // allow the frontend (localhost:3000) to call this API
@@ -29,6 +30,8 @@ app.use("/", templatesRouter);
 app.use("/", trackingRouter);
 // SES → SNS webhook (bounce/complaint auto-suppression).
 app.use("/", webhooksRouter);
+// Analytics (real open/click/bounce numbers).
+app.use("/", analyticsRouter);
 
 const port = Number(process.env.BACKEND_PORT) || 4000;
 app.listen(port, () => {

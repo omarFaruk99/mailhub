@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Send, LayoutTemplate, Mail, Search, Moon, ChevronsUpDown } from "lucide-react";
+import { LayoutDashboard, Users, Send, LayoutTemplate, Mail, Search, Moon, ChevronsUpDown, BarChart3 } from "lucide-react";
 import { useBrand } from "@/lib/use-brand";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ const nav = [
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/templates", label: "Templates", icon: LayoutTemplate },
   { href: "/campaigns", label: "Campaigns", icon: Send },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
