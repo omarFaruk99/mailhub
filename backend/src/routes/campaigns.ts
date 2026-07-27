@@ -139,15 +139,25 @@ router.post("/campaigns/:campaignId/schedule", async (req, res) => {
   );
   if (!jobId) return res.status(500).json({ error: "could not create the scheduled job" });
 
-  const updated = await prisma.campaign.update({
-    where: { id: campaign.id },
+  // Conditional, like /send and /unschedule: if the worker claimed the campaign
+  // between the read above and this write, an unconditional update would return
+  // 200 for a schedule that the in-flight send then wipes — leaving an orphaned
+  // job and a campaign that never fires.
+  const saved = await prisma.campaign.updateMany({
+    where: { id: campaign.id, status: { in: ["draft", "scheduled", "failed"] } },
     data: { status: "scheduled", scheduledAt: runAt, timezone, sendOptions: filter, jobId },
   });
+  if (saved.count === 0) {
+    // Nothing was stored, so the job we just created must not survive.
+    await queue.cancel(SEND_QUEUE, jobId).catch(() => {});
+    return res.status(409).json({ error: "this campaign is being sent right now" });
+  }
 
   // Now the row points at the new job, the old one is already powerless (the
   // worker checks jobId); cancelling just keeps the queue tidy.
   if (campaign.jobId) await queue.cancel(SEND_QUEUE, campaign.jobId).catch(() => {});
 
+  const updated = await prisma.campaign.findUnique({ where: { id: campaign.id } });
   return res.json(updated);
 });
 
