@@ -12,6 +12,21 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { Plus } from "lucide-react";
 import type { Campaign } from "@/lib/api";
 
+// A scheduled time is shown in the timezone it was set in, so it reads back
+// exactly as the person typed it.
+function formatScheduled(iso: string, timeZone?: string | null) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  try {
+    return d.toLocaleString("en-GB", {
+      day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true,
+      ...(timeZone ? { timeZone } : {}),
+    });
+  } catch {
+    return d.toLocaleString();
+  }
+}
+
 export default function CampaignsPage() {
   const { brand } = useBrand();
   const brandId = brand?.id;
@@ -24,6 +39,16 @@ export default function CampaignsPage() {
     { key: "category", header: "Category", cell: (c) => c.category },
     { key: "subject", header: "Subject", cell: (c) => c.subject },
     { key: "status", header: "Status", cell: (c) => <StatusBadge status={c.status} /> },
+    {
+      key: "when",
+      header: "Scheduled for",
+      width: 190,
+      align: "right",
+      // Only while it is still waiting: after the send the time is history, and
+      // leaving it under "Scheduled for" reads like it is going out again.
+      cell: (c) =>
+        c.status === "scheduled" && c.scheduledAt ? formatScheduled(c.scheduledAt, c.timezone) : "—",
+    },
   ];
 
   return (

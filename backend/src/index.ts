@@ -8,6 +8,7 @@ import templatesRouter from "./routes/templates.js";
 import trackingRouter from "./routes/tracking.js";
 import webhooksRouter from "./routes/webhooks.js";
 import analyticsRouter from "./routes/analytics.js";
+import { startQueue, stopQueue } from "./queue.js";
 
 const app = express();
 app.use(cors()); // allow the frontend (localhost:3000) to call this API
@@ -34,6 +35,23 @@ app.use("/", webhooksRouter);
 app.use("/", analyticsRouter);
 
 const port = Number(process.env.BACKEND_PORT) || 4000;
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Backend running on http://localhost:${port}`);
 });
+
+// Scheduled sends. Started after the server is listening so a queue problem can
+// never stop the API from coming up (sending now keeps working either way).
+startQueue();
+
+// Let pg-boss finish/return the job it holds before the process dies, otherwise
+// a dev restart leaves the job locked until its heartbeat expires.
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, async () => {
+    await stopQueue().catch(() => {});
+    // A keep-alive connection (the frontend polls) can hold server.close() open
+    // forever, which would hang every dev restart — so exit anyway after 5s.
+    const force = setTimeout(() => process.exit(0), 5000);
+    force.unref();
+    server.close(() => process.exit(0));
+  });
+}

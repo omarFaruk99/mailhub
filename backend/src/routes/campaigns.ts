@@ -1,12 +1,12 @@
-// Campaign routes: create, list, send (broadcast), and unsubscribe.
+// Campaign routes: create, list, send (broadcast), schedule, and unsubscribe.
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { sendEmail } from "../email/ses.js";
+import { CONTACT_TYPES, sendCampaign, type SendFilter } from "../email/send-campaign.js";
+import { getQueue, SEND_QUEUE, type SendJobData } from "../queue.js";
+import { zonedTimeToUtc } from "../lib/timezone.js";
 
 const router = Router();
-
-const base = () => `http://localhost:${process.env.BACKEND_PORT || 4000}`;
 
 // ---- Create a campaign (draft) ----
 const campaignSchema = z.object({
@@ -50,18 +50,6 @@ router.get("/campaigns/:campaignId/recipients", async (req, res) => {
 });
 
 // ---- Send a campaign (broadcast with filter) ----
-// Which contact types each category is sent to BY DEFAULT (when the caller
-// does not pass includeTypes). This is the safe server-side rule; the UI
-// mirrors it to pre-check boxes, but the user can adjust and send its own list.
-const CONTACT_TYPES = ["client", "prospect", "internal"] as const;
-// Authoritative rule. Frontend `defaultTypes` (campaigns/[id]/page.tsx) mirrors
-// this to pre-check boxes — keep the two in sync.
-function defaultTypesForCategory(category: string): string[] {
-  if (category === "Marketing/Offers") return ["client", "prospect"];
-  if (category === "Product updates") return ["client", "prospect", "internal"]; // everyone
-  return ["client"]; // Tips / Transactional: clients by default
-}
-
 // Optional filter in body: { plan, country, company, includeTypes }
 const filterSchema = z.object({
   plan: z.string().optional(),
@@ -76,111 +64,99 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
 
   const campaign = await prisma.campaign.findUnique({ where: { id: req.params.campaignId } });
   if (!campaign) return res.status(404).json({ error: "campaign not found" });
-
-  // Which contact types receive this send.
-  const includeTypes =
-    filter.data.includeTypes && filter.data.includeTypes.length > 0
-      ? filter.data.includeTypes
-      : defaultTypesForCategory(campaign.category);
-
-  // Company filter: trim + case-insensitive so "abc travel" matches "ABC Travel".
-  const companyFilter = filter.data.company?.trim();
-
-  // 1) Suppressed emails for this brand (unsubscribe/bounce/complaint).
-  const suppressed = await prisma.suppression.findMany({
-    where: { brandId: campaign.brandId },
-    select: { email: true },
-  });
-  const suppressedSet = new Set(suppressed.map((s) => s.email));
-
-  // 2) Contacts of this brand matching the filter, only subscribed.
-  const contacts = await prisma.contact.findMany({
-    where: {
-      brandId: campaign.brandId,
-      status: "subscribed",
-      type: { in: includeTypes },
-      ...(filter.data.plan ? { plan: filter.data.plan } : {}),
-      ...(filter.data.country ? { country: filter.data.country } : {}),
-      ...(companyFilter ? { company: { equals: companyFilter, mode: "insensitive" as const } } : {}),
-    },
-  });
-
-  let sent = 0;
-  let skippedSuppressed = 0;
-  let skippedAlready = 0;
-  let failed = 0;
-
-  for (const c of contacts) {
-    if (suppressedSet.has(c.email)) {
-      skippedSuppressed++;
-      continue;
-    }
-
-    // Exactly-once: skip if this contact already got this campaign.
-    const already = await prisma.campaignRecipient.findUnique({
-      where: { campaignId_contactId: { campaignId: campaign.id, contactId: c.id } },
-    });
-    if (already) {
-      skippedAlready++;
-      continue;
-    }
-
-    // Create the recipient row first, so we have an id for tracking links.
-    const rec = await prisma.campaignRecipient.create({
-      data: { campaignId: campaign.id, contactId: c.id, email: c.email, status: "sending" },
-    });
-
-    const b = base();
-    const unsubUrl = `${b}/unsubscribe?b=${campaign.brandId}&c=${c.id}`;
-
-    // Merge tags: replace {{name}} with this contact's name (fallback "there").
-    // HTML-escape the value and use a function replacement so names containing
-    // <, &, ", or $ can't break the markup or the replacement pattern.
-    const escapeHtml = (s: string) =>
-      s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch] as string));
-    const safeName = escapeHtml(c.name?.trim() || "there");
-    const personalized = campaign.html.replace(/\{\{\s*name\s*\}\}/gi, () => safeName);
-
-    // Click tracking: rewrite every http(s) link through /track/click.
-    let body = personalized.replace(
-      /href="(https?:\/\/[^"]+)"/g,
-      (_m, url) => `href="${b}/track/click?r=${rec.id}&u=${encodeURIComponent(url)}"`
-    );
-    // Unsubscribe footer + open-tracking pixel.
-    const html =
-      body +
-      `<hr><p style="font-size:12px;color:#888">Don't want these emails?
-         <a href="${unsubUrl}">Unsubscribe</a></p>` +
-      `<img src="${b}/track/open?r=${rec.id}" width="1" height="1" style="display:none" alt="">`;
-
-    try {
-      const messageId = await sendEmail({
-        to: c.email,
-        subject: campaign.subject,
-        html,
-        headers: [
-          { Name: "List-Unsubscribe", Value: `<${unsubUrl}>` },
-          { Name: "List-Unsubscribe-Post", Value: "List-Unsubscribe=One-Click" },
-        ],
-      });
-      await prisma.campaignRecipient.update({
-        where: { id: rec.id },
-        data: { messageId, status: "sent" },
-      });
-      sent++;
-      await new Promise((r) => setTimeout(r, 200)); // gentle rate limit
-    } catch (e) {
-      failed++;
-      await prisma.campaignRecipient.update({
-        where: { id: rec.id },
-        data: { status: "failed" },
-      });
-    }
+  // A scheduled send may already be running in the worker — don't start a second
+  // pass on top of it (exactly-once protects the emails; this protects the status).
+  if (campaign.status === "sending") {
+    return res.status(409).json({ error: "this campaign is being sent right now" });
   }
 
-  await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "sent" } });
+  // Sending now cancels any pending schedule, so it can't fire again later.
+  if (campaign.jobId) {
+    await getQueue()?.cancel(SEND_QUEUE, campaign.jobId).catch(() => {});
+    await prisma.campaign.update({
+      where: { id: campaign.id },
+      data: { jobId: null, scheduledAt: null, timezone: null },
+    });
+  }
 
-  res.json({ matched: contacts.length, sent, skippedSuppressed, skippedAlready, failed, includeTypes });
+  const result = await sendCampaign(campaign.id, filter.data as SendFilter);
+  return res.json(result);
+});
+
+// ---- Schedule a campaign (send later) ----
+// The audience/filter is frozen here, because the send runs later with nobody
+// on screen. `localDateTime` is wall-clock time ("2026-07-28T14:30") in `timezone`.
+const scheduleSchema = filterSchema.extend({
+  localDateTime: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/),
+  timezone: z.string().min(1),
+});
+
+router.post("/campaigns/:campaignId/schedule", async (req, res) => {
+  const parsed = scheduleSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+  const { localDateTime, timezone, ...filter } = parsed.data;
+
+  const queue = getQueue();
+  if (!queue) return res.status(503).json({ error: "the scheduler is not running" });
+
+  const campaign = await prisma.campaign.findUnique({ where: { id: req.params.campaignId } });
+  if (!campaign) return res.status(404).json({ error: "campaign not found" });
+  if (campaign.status === "sending") {
+    return res.status(409).json({ error: "this campaign is being sent right now" });
+  }
+  if (campaign.status === "sent") {
+    return res.status(409).json({ error: "this campaign has already been sent" });
+  }
+
+  const runAt = zonedTimeToUtc(localDateTime, timezone);
+  if (!runAt) return res.status(400).json({ error: "invalid date/time or timezone" });
+  // A minute of slack: a time that has just passed is a mistake, not an instant send.
+  if (runAt.getTime() < Date.now() + 60_000) {
+    return res.status(400).json({ error: "pick a time at least a minute from now" });
+  }
+
+  // Re-scheduling: drop the old job first so only one can ever fire.
+  if (campaign.jobId) await queue.cancel(SEND_QUEUE, campaign.jobId).catch(() => {});
+
+  const jobId = await queue.send(
+    SEND_QUEUE,
+    { campaignId: campaign.id } satisfies SendJobData,
+    { startAfter: runAt, singletonKey: campaign.id, retryLimit: 2 }
+  );
+  if (!jobId) return res.status(500).json({ error: "could not create the scheduled job" });
+
+  const updated = await prisma.campaign.update({
+    where: { id: campaign.id },
+    data: { status: "scheduled", scheduledAt: runAt, timezone, sendOptions: filter, jobId },
+  });
+  return res.json(updated);
+});
+
+// ---- Cancel a schedule (back to draft) ----
+router.post("/campaigns/:campaignId/unschedule", async (req, res) => {
+  const campaign = await prisma.campaign.findUnique({ where: { id: req.params.campaignId } });
+  if (!campaign) return res.status(404).json({ error: "campaign not found" });
+
+  // Release it in one conditional write, for the same reason the worker claims it
+  // in one: if the job has just started, `status` is already "sending" and this
+  // must fail rather than tell the user a running send was cancelled.
+  const released = await prisma.campaign.updateMany({
+    where: { id: campaign.id, status: "scheduled" },
+    data: { status: "draft", scheduledAt: null, timezone: null, jobId: null },
+  });
+  if (released.count === 0) {
+    return res.status(409).json({
+      error:
+        campaign.status === "sending"
+          ? "this campaign is being sent right now — too late to cancel"
+          : "this campaign is not scheduled",
+    });
+  }
+
+  if (campaign.jobId) await getQueue()?.cancel(SEND_QUEUE, campaign.jobId).catch(() => {});
+
+  const updated = await prisma.campaign.findUnique({ where: { id: campaign.id } });
+  return res.json(updated);
 });
 
 // ---- Unsubscribe (GET = user clicks link; POST = Gmail one-click) ----

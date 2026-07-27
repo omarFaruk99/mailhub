@@ -14,14 +14,27 @@ export type Contact = {
   status: string;
   createdAt: string;
 };
+export type SendFilter = {
+  plan?: string;
+  country?: string;
+  company?: string;
+  includeTypes?: ContactType[];
+};
 export type Campaign = {
   id: string;
   name: string;
   category: string;
   subject: string;
   html: string;
+  /** draft | scheduled | sending | sent */
   status: string;
   createdAt: string;
+  /** Absolute UTC instant the scheduled send fires. */
+  scheduledAt?: string | null;
+  /** IANA zone the user picked, e.g. "Asia/Dhaka" — for display only. */
+  timezone?: string | null;
+  /** Audience + filters frozen at schedule time. */
+  sendOptions?: SendFilter | null;
 };
 export type Recipient = {
   id: string;
@@ -135,15 +148,22 @@ export const api = {
   campaigns: (brandId: string) => req<Campaign[]>(`/brands/${brandId}/campaigns`),
   createCampaign: (brandId: string, c: Omit<Campaign, "id" | "status" | "createdAt">) =>
     req<Campaign>(`/brands/${brandId}/campaigns`, { method: "POST", body: JSON.stringify(c) }),
-  sendCampaign: (
-    id: string,
-    filter: { plan?: string; country?: string; company?: string; includeTypes?: ContactType[] }
-  ) =>
+  sendCampaign: (id: string, filter: SendFilter) =>
     req<{ matched: number; sent: number; skippedSuppressed: number; skippedAlready: number; failed: number; includeTypes: ContactType[] }>(
       `/campaigns/${id}/send`,
       { method: "POST", body: JSON.stringify(filter) }
     ),
   recipients: (id: string) => req<Recipient[]>(`/campaigns/${id}/recipients`),
+
+  // Scheduling. `localDateTime` is wall-clock time ("2026-07-28T14:30") and
+  // `timezone` is the IANA zone it belongs to; the backend turns the pair into a
+  // real instant, so the send fires at that clock time in that place.
+  scheduleCampaign: (
+    id: string,
+    body: SendFilter & { localDateTime: string; timezone: string }
+  ) => req<Campaign>(`/campaigns/${id}/schedule`, { method: "POST", body: JSON.stringify(body) }),
+  unscheduleCampaign: (id: string) =>
+    req<Campaign>(`/campaigns/${id}/unschedule`, { method: "POST" }),
 
   // Templates (saved email designs) — stored in the backend.
   templates: (brandId: string) => req<Template[]>(`/brands/${brandId}/templates`),

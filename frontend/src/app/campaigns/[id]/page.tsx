@@ -21,7 +21,7 @@ import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 import {
   Send, Monitor, Smartphone, ChevronRight, ChevronDown, PanelRightClose, Settings2, Check, X, Search,
-  Users, Mail, Maximize2, Minimize2, ZoomIn,
+  Users, Mail, Maximize2, Minimize2, ZoomIn, Clock, CalendarClock,
 } from "lucide-react";
 
 // Which contact types are pre-checked for a category (user can change).
@@ -37,6 +37,62 @@ const AUDIENCE: { value: ContactType; label: string; desc: string }[] = [
   { value: "prospect", label: "Prospects", desc: "Potential customers" },
   { value: "internal", label: "Internal", desc: "Our own colleagues" },
 ];
+// The browser's own timezone, used as the default for "Schedule for later".
+// Everything else in the list is offered so a send can be timed to the
+// recipients' clock, not ours.
+function browserTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+// Full IANA list where the browser exposes it (all current ones do); the short
+// fallback keeps the picker usable if it ever doesn't.
+function timezoneOptions(): string[] {
+  const supported = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf;
+  const list = supported ? supported("timeZone") : [];
+  if (list.length) return list;
+  return [...new Set(["UTC", "Asia/Dhaka", "Asia/Kolkata", "Asia/Dubai", "Europe/London", "America/New_York", browserTimezone()])];
+}
+
+// "2026-07-28T14:30" for an <input type="datetime-local">, `minutesAhead` from now.
+function localInputValue(minutesAhead = 0) {
+  const d = new Date(Date.now() + minutesAhead * 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// The reverse of localInputValue: a stored instant → the wall clock it shows in
+// `timeZone`, so re-opening a scheduled campaign puts the saved time back in the
+// input rather than the viewer's local equivalent.
+function toLocalInput(iso: string, timeZone?: string | null) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    ...(timeZone ? { timeZone } : {}),
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  const hour = g("hour") === "24" ? "00" : g("hour");
+  return `${g("year")}-${g("month")}-${g("day")}T${hour}:${g("minute")}`;
+}
+
+// Show an instant in a chosen zone, e.g. "28 Jul 2026, 2:30 pm".
+function formatInZone(iso: string, timeZone?: string | null) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  try {
+    return d.toLocaleString("en-GB", {
+      day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true,
+      ...(timeZone ? { timeZone } : {}),
+    });
+  } catch {
+    return d.toLocaleString();
+  }
+}
+
 // Zoom only goes DOWN from 100%: a real email is ~600px wide, so >100% would make
 // the preview overflow the stage and hide part of the email. Zooming out lets you
 // see more of a long email at once.
@@ -76,7 +132,17 @@ function CampaignSend() {
   const qc = useQueryClient();
 
   // ---- data ----
-  const campaigns = useQuery({ queryKey: ["campaigns", brandId], queryFn: () => api.campaigns(brandId!), enabled: !!brandId });
+  const campaigns = useQuery({
+    queryKey: ["campaigns", brandId],
+    queryFn: () => api.campaigns(brandId!),
+    enabled: !!brandId,
+    // While a send is pending, the change comes from the worker, not from this
+    // screen — poll so the page doesn't keep saying "Scheduled" after it went out.
+    refetchInterval: (q) => {
+      const c = q.state.data?.find((x) => x.id === id);
+      return c?.status === "scheduled" || c?.status === "sending" ? 15_000 : false;
+    },
+  });
   const campaign = campaigns.data?.find((c) => c.id === id);
   const contacts = useQuery({ queryKey: ["contacts", brandId], queryFn: () => api.contacts(brandId!), enabled: !!brandId });
   const suppressions = useQuery({ queryKey: ["suppressions", brandId], queryFn: () => api.suppressions(brandId!), enabled: !!brandId });
@@ -105,6 +171,15 @@ function CampaignSend() {
   const [open, setOpen] = useState<Record<string, boolean>>({ audience: true, filters: false, when: false, checklist: false });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
+  // Schedule form. Each piece is an *override*: null means "follow the campaign"
+  // (a scheduled campaign opens on its own saved time), a value means the user
+  // has touched the field. Deriving instead of syncing avoids effect cascades.
+  const [whenOverride, setWhenOverride] = useState<"now" | "later" | null>(null);
+  const [atOverride, setAtOverride] = useState<string | null>(null);
+  const [tzOverride, setTzOverride] = useState<string | null>(null);
+  const [defaultAt] = useState(() => localInputValue(60)); // an hour from now
+  const [minAt] = useState(() => localInputValue(2)); // fixed once, so it can't churn per render
+  const [tzList] = useState(() => timezoneOptions());
 
   // Full screen: the toggle button shows on both tabs and Escape also exits, so
   // there is always a way out (no stranded overlay). Escape is the keyboard path.
@@ -137,10 +212,21 @@ function CampaignSend() {
   );
   const total = audience.length;
 
+  // ---- when to send ----
+  const isScheduled = campaign?.status === "scheduled";
+  const whenMode = whenOverride ?? (isScheduled ? "later" : "now");
+  const scheduleAt =
+    atOverride ?? (campaign?.scheduledAt ? toLocalInput(campaign.scheduledAt, campaign.timezone) : defaultAt);
+  const timezone = tzOverride ?? campaign?.timezone ?? browserTimezone();
+  // Same rule as the backend: at least a minute out. The input is wall-clock time
+  // in `timezone`, so this local check is approximate — the server has the final say.
+  const scheduleLooksValid = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(scheduleAt);
+
+  const filterBody = { includeTypes: types, ...(plan ? { plan } : {}), ...(company ? { company } : {}) };
+
   // ---- send ----
   const sendMut = useMutation({
-    mutationFn: () =>
-      api.sendCampaign(id, { includeTypes: types, ...(plan ? { plan } : {}), ...(company ? { company } : {}) }),
+    mutationFn: () => api.sendCampaign(id, filterBody),
     onSuccess: (r) => {
       toast.success(`Sent ${r.sent} · skipped ${r.skippedSuppressed + r.skippedAlready} · failed ${r.failed}`);
       qc.invalidateQueries({ queryKey: ["recipients", id] });
@@ -148,6 +234,28 @@ function CampaignSend() {
       setViewOverride("recipients"); // jump to the results once the send finishes
     },
     onError: (e: Error) => toast.error("Send failed: " + e.message),
+  });
+
+  const scheduleMut = useMutation({
+    mutationFn: () => api.scheduleCampaign(id, { ...filterBody, localDateTime: scheduleAt, timezone }),
+    onSuccess: (c) => {
+      toast.success(`Scheduled for ${formatInZone(c.scheduledAt!, c.timezone)}`);
+      // Drop the local overrides so the panel now mirrors what was saved.
+      setAtOverride(null);
+      setTzOverride(null);
+      qc.invalidateQueries({ queryKey: ["campaigns", brandId] });
+    },
+    onError: (e: Error) => toast.error("Could not schedule: " + e.message),
+  });
+
+  const unscheduleMut = useMutation({
+    mutationFn: () => api.unscheduleCampaign(id),
+    onSuccess: () => {
+      toast.success("Schedule cancelled — the campaign is a draft again");
+      setWhenOverride("now");
+      qc.invalidateQueries({ queryKey: ["campaigns", brandId] });
+    },
+    onError: (e: Error) => toast.error("Could not cancel: " + e.message),
   });
 
   const recs = recipients.data ?? [];
@@ -174,7 +282,18 @@ function CampaignSend() {
   // (backend is exactly-once, so a re-send only reaches these).
   const sentEmails = new Set(recs.map((r) => r.email));
   const remaining = audience.filter((c) => !sentEmails.has(c.email)).length;
-  const canSend = !!campaign && !sendMut.isPending && (isSent ? remaining > 0 : total > 0);
+  const busy = sendMut.isPending || scheduleMut.isPending;
+  // A send already running in the worker owns the campaign — no second action.
+  const isSending = campaign?.status === "sending";
+  const canSend =
+    !!campaign &&
+    !busy &&
+    !isSending &&
+    (whenMode === "later"
+      ? total > 0 && scheduleLooksValid && !isSent
+      : isSent
+        ? remaining > 0
+        : total > 0);
 
   // email preview: show {{name}} as a friendly placeholder
   const previewHtml = (campaign?.html ?? "").replace(/\{\{\s*name\s*\}\}/gi, "there");
@@ -238,11 +357,18 @@ function CampaignSend() {
       })
     : "";
   // send button label
-  const sendLabel = sendMut.isPending
-    ? "Sending…"
-    : isSent
-      ? remaining > 0 ? `Send to ${remaining} more →` : "Sent"
-      : `Send to ${total} →`;
+  const sendLabel =
+    whenMode === "later"
+      ? scheduleMut.isPending
+        ? "Scheduling…"
+        : isScheduled
+          ? "Update schedule →"
+          : `Schedule for ${total} →`
+      : sendMut.isPending
+        ? "Sending…"
+        : isSent
+          ? remaining > 0 ? `Send to ${remaining} more →` : "Sent"
+          : `Send to ${total} →`;
 
   return (
     <div className="flex min-w-0 flex-col" style={{ height: "100vh" }}>
@@ -253,7 +379,9 @@ function CampaignSend() {
           <span className="text-muted-foreground/50">/</span>
           <span className="truncate font-semibold">{campaign?.name ?? "…"}</span>
         </div>
-        <StatusPill sent={isSent} />
+        <StatusPill
+          status={isSending ? "sending" : isSent ? "sent" : isScheduled ? "scheduled" : "draft"}
+        />
         <div className="flex-1" />
         <Button variant="outline" size="sm" onClick={() => setTestOpen(true)}>
           Send test
@@ -264,7 +392,7 @@ function CampaignSend() {
           disabled={!canSend}
           style={{ background: "var(--sidebar-primary)", color: "white" }}
         >
-          <Send className="size-4" />
+          {whenMode === "later" ? <CalendarClock className="size-4" /> : <Send className="size-4" />}
           {sendLabel}
         </Button>
       </div>
@@ -482,24 +610,90 @@ function CampaignSend() {
               )}
             </Accordion>
 
-            <Accordion num={3} title="When to send" summary="Send now"
-              openState={open.when} onToggle={() => setOpen((o) => ({ ...o, when: !o.when }))}>
-              <div className="flex flex-col gap-1.5">
-                <div className="rounded-lg border border-[color:var(--sidebar-primary)] bg-[color-mix(in_oklch,var(--sidebar-primary)_6%,transparent)] px-3 py-2.5">
-                  <div className="flex items-center gap-2 text-[13.5px] font-semibold">
-                    <span className="relative grid size-3.5 place-items-center rounded-full border-[1.5px] border-[color:var(--sidebar-primary)]">
-                      <span className="size-1.5 rounded-full" style={{ background: "var(--sidebar-primary)" }} />
-                    </span>
-                    Send now
+            <Accordion
+              num={3}
+              title="When to send"
+              summary={
+                isScheduled && campaign?.scheduledAt
+                  ? formatInZone(campaign.scheduledAt, campaign.timezone)
+                  // Not scheduled yet — show the time currently picked, not a
+                  // progress word, so the collapsed row never overstates things.
+                  : whenMode === "later" ? scheduleAt.replace("T", ", ") : "Send now"
+              }
+              openState={open.when} onToggle={() => setOpen((o) => ({ ...o, when: !o.when }))}
+            >
+              {/* Already scheduled: say so plainly, and offer the way out. */}
+              {isScheduled && campaign?.scheduledAt && (
+                <div className="rounded-lg border border-[color:var(--sidebar-primary)] bg-[color-mix(in_oklch,var(--sidebar-primary)_6%,transparent)] p-3">
+                  <div className="flex items-center gap-2 text-[13px] font-semibold">
+                    <CalendarClock className="size-4" />
+                    Scheduled
                   </div>
-                  <div className="ml-[22px] mt-0.5 text-[12px] text-muted-foreground">Goes out immediately</div>
+                  <div className="mt-1 text-[13px]">{formatInZone(campaign.scheduledAt, campaign.timezone)}</div>
+                  <div className="text-[12px] text-muted-foreground">
+                    {campaign.timezone}
+                    {/* Only worth showing when it differs from the zone the viewer is in. */}
+                    {campaign.timezone !== browserTimezone() &&
+                      ` · your time: ${formatInZone(campaign.scheduledAt)}`}
+                  </div>
+                  <button
+                    onClick={() => unscheduleMut.mutate()}
+                    disabled={unscheduleMut.isPending}
+                    className="mt-2.5 rounded-lg border bg-card px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-muted disabled:opacity-60"
+                  >
+                    {unscheduleMut.isPending ? "Cancelling…" : "Cancel schedule"}
+                  </button>
                 </div>
-                <div className="flex items-center gap-2 rounded-lg border px-3 py-2.5 opacity-60">
-                  <span className="size-3.5 flex-none rounded-full border-[1.5px]" />
-                  <span className="text-[13.5px] font-medium">Schedule for later</span>
-                  <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">Soon</span>
-                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <WhenOption
+                  active={whenMode === "now"}
+                  onClick={() => setWhenOverride("now")}
+                  title="Send now"
+                  desc="Goes out immediately"
+                  disabled={isSent}
+                />
+                <WhenOption
+                  active={whenMode === "later"}
+                  onClick={() => setWhenOverride("later")}
+                  title="Schedule for later"
+                  desc="Pick a date, time and timezone"
+                  disabled={isSent}
+                />
               </div>
+
+              {whenMode === "later" && !isSent && (
+                <div className="flex flex-col gap-2.5 rounded-lg border p-3">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[12px] text-muted-foreground">Date &amp; time</span>
+                    <Input
+                      type="datetime-local"
+                      value={scheduleAt}
+                      // The value is wall-clock time in the *selected* zone, so a
+                      // browser-local minimum only makes sense when they match.
+                      min={timezone === browserTimezone() ? minAt : undefined}
+                      onChange={(e) => setAtOverride(e.target.value)}
+                      className="h-9 text-[13.5px]"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[12px] text-muted-foreground">Timezone</span>
+                    <select
+                      value={timezone}
+                      onChange={(e) => setTzOverride(e.target.value)}
+                      className="h-9 rounded-lg border bg-card px-2.5 text-[13.5px]"
+                    >
+                      {tzList.map((z) => <option key={z} value={z}>{z}</option>)}
+                    </select>
+                  </label>
+                  <p className="flex items-start gap-1.5 text-[12px] text-muted-foreground">
+                    <Clock className="mt-0.5 size-3.5 flex-none" />
+                    The audience and filters above are saved with the schedule, and the
+                    email goes out even if nobody is logged in.
+                  </p>
+                </div>
+              )}
             </Accordion>
 
             <Accordion num={4} title="Pre-send checklist" summary={allGood ? "All good" : `${failingChecks} to fix`}
@@ -530,11 +724,13 @@ function CampaignSend() {
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="sm:max-w-120">
           <DialogHeader>
-            <DialogTitle>Send this campaign?</DialogTitle>
+            <DialogTitle>{whenMode === "later" ? "Schedule this campaign?" : "Send this campaign?"}</DialogTitle>
             <DialogDescription>
-              {isSent
-                ? "Contacts who already got it are skipped automatically. This can’t be undone."
-                : "The email goes out immediately. This can’t be undone."}
+              {whenMode === "later"
+                ? "It goes out automatically at the time below. You can cancel the schedule until then."
+                : isSent
+                  ? "Contacts who already got it are skipped automatically. This can’t be undone."
+                  : "The email goes out immediately. This can’t be undone."}
             </DialogDescription>
           </DialogHeader>
           {/* final recap — key facts right before sending */}
@@ -570,15 +766,32 @@ function CampaignSend() {
                 <span className="text-muted-foreground">{replyTo}</span>
               </span>
             </ConfirmRow>
-            <ConfirmRow k="When"><span className="font-semibold">Send now</span></ConfirmRow>
+            <ConfirmRow k="When">
+              {whenMode === "later" ? (
+                <span className="flex flex-col leading-snug">
+                  <span className="font-semibold">{scheduleAt.replace("T", ", ")}</span>
+                  <span className="text-muted-foreground">{timezone}</span>
+                </span>
+              ) : (
+                <span className="font-semibold">Send now</span>
+              )}
+            </ConfirmRow>
           </div>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
             <Button
-              onClick={() => { setConfirmOpen(false); sendMut.mutate(); }}
+              onClick={() => {
+                setConfirmOpen(false);
+                if (whenMode === "later") scheduleMut.mutate();
+                else sendMut.mutate();
+              }}
               style={{ background: "var(--sidebar-primary)", color: "white" }}
             >
-              <Send className="size-4" /> Send now
+              {whenMode === "later" ? (
+                <><CalendarClock className="size-4" /> Schedule</>
+              ) : (
+                <><Send className="size-4" /> Send now</>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -628,18 +841,53 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatusPill({ sent }: { sent: boolean }) {
+function StatusPill({ status }: { status: "sent" | "sending" | "scheduled" | "draft" }) {
+  const label = { sent: "Sent", sending: "Sending…", scheduled: "Scheduled", draft: "Draft" }[status];
+  const accent =
+    status === "sent" ? "var(--good)" : status === "scheduled" || status === "sending" ? "var(--sidebar-primary)" : null;
   return (
     <span
       className="rounded-full px-2.5 py-0.5 text-[12px] font-semibold"
       style={
-        sent
-          ? { background: "color-mix(in oklch, var(--good) 16%, transparent)", color: "var(--good)" }
+        accent
+          ? { background: `color-mix(in oklch, ${accent} 16%, transparent)`, color: accent }
           : { background: "var(--muted)", color: "var(--muted-foreground)" }
       }
     >
-      {sent ? "Sent" : "Draft"}
+      {label}
     </span>
+  );
+}
+
+// One radio-style row in "When to send".
+function WhenOption({
+  active, onClick, title, desc, disabled,
+}: { active: boolean; onClick: () => void; title: string; desc: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "rounded-lg border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        active
+          ? "border-[color:var(--sidebar-primary)] bg-[color-mix(in_oklch,var(--sidebar-primary)_6%,transparent)]"
+          : "hover:bg-muted"
+      )}
+    >
+      <div className="flex items-center gap-2 text-[13.5px] font-semibold">
+        <span
+          className={cn(
+            "relative grid size-3.5 flex-none place-items-center rounded-full border-[1.5px]",
+            active && "border-[color:var(--sidebar-primary)]"
+          )}
+        >
+          {active && <span className="size-1.5 rounded-full" style={{ background: "var(--sidebar-primary)" }} />}
+        </span>
+        {title}
+      </div>
+      <div className="ml-[22px] mt-0.5 text-[12px] text-muted-foreground">{desc}</div>
+    </button>
   );
 }
 

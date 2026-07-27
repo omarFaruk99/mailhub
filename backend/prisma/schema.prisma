@@ -72,8 +72,18 @@ model Campaign {
   category  String   // Product updates | Marketing/Offers | Tips & Onboarding | Transactional
   subject   String
   html      String
-  status    String   @default("draft") // draft | sent
+  status    String   @default("draft") // draft | scheduled | sending | sent
   createdAt DateTime @default(now())
+
+  // --- Scheduling (send later) ---
+  // scheduledAt is the absolute UTC instant the send must happen. timezone is the
+  // IANA zone the user picked (kept only so the UI can show the time they chose).
+  // sendOptions freezes the audience/filter at schedule time, because the send runs
+  // later without anyone on screen. jobId is the pg-boss job, so it can be cancelled.
+  scheduledAt DateTime?
+  timezone    String?
+  sendOptions Json?
+  jobId       String?
 
   brandId   String
   brand     Brand    @relation(fields: [brandId], references: [id])
