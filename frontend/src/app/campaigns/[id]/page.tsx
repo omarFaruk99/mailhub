@@ -210,9 +210,13 @@ function CampaignSend() {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
-  // What the pending schedule was saved with, if any. Only while it is actually
-  // scheduled: once sent, the form should behave like a fresh send again.
-  const frozen = campaign?.status === "scheduled" ? campaign.sendOptions ?? null : null;
+  // The audience this campaign was last saved with, whatever its status now is.
+  // Deliberately NOT limited to "scheduled": cancelling a schedule cancels the
+  // *time*, not the choice of who receives it. Falling back to the category
+  // default there would silently swap a hand-picked audience (say prospect +
+  // internal) for a different one — the sender's last screen before pressing
+  // send must show what they actually chose.
+  const frozen = campaign?.sendOptions ?? null;
 
   const types = pickedTypes ?? frozen?.includeTypes ?? defaultTypes(campaign?.category);
   const plan = planOverride ?? frozen?.plan ?? "";

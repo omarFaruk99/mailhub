@@ -142,7 +142,13 @@ export const api = {
     fd.append("file", file);
     const r = await fetch(`${API}/brands/${brandId}/contacts/import`, { method: "POST", body: fd });
     if (!r.ok) throw new Error("import failed");
-    return r.json() as Promise<{ received: number; added: number; skipped: number }>;
+    return r.json() as Promise<{
+      received: number;
+      added: number;
+      skipped: number;
+      /** Values found in the CSV's type column that we don't recognise. */
+      unknownTypes: string[];
+    }>;
   },
 
   campaigns: (brandId: string) => req<Campaign[]>(`/brands/${brandId}/campaigns`),

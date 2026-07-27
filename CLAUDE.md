@@ -30,6 +30,16 @@ real emails delivered via Amazon SES (personal dev account, sandbox).
 Frontend is styled in a clean **Loops-style** look (left sidebar, soft violet accent,
 light/dark). Details, exact "done vs next", and run commands are in **PROGRESS.md**.
 
+**Two Phase 2 items are also done:** the **analytics dashboard** and **scheduling**
+(send later, with timezone — pg-boss jobs stored in our own PostgreSQL, so a
+scheduled send survives a restart). **Next up: auto-pause** — the one guardrail
+big tools have that we don't, and mandatory before SES production.
+
+**Dev servers:** after a merge, branch switch, or laptop restart, **restart both dev
+servers** — an orphaned Next.js process serves stale CSS/JS and looks like a bug
+(this happened once; the chart lost its colours). If it looks wrong: stop dev →
+`rm -rf frontend/.next` → `npm run dev`.
+
 **UI reference (liked):** the chosen look is concept **demo #1 (Loops style)** — use it
 as the visual reference for new screens. Demo URLs are listed in **PROGRESS.md**
 (§ Concept demos). When building filters/templates/analytics etc., match that look.
@@ -144,6 +154,17 @@ guides the user through each manual task.
   internal)** · Tips / Transactional → client. Rationale: staff/prospects should see
   new features (support needs to know them; a feature can convert a prospect).
   Internal is never in the default marketing audience.
+  - The rule is written **twice** — `defaultTypesForCategory`
+    (`backend/src/email/send-campaign.ts`, authoritative: applied whenever a request
+    omits `includeTypes`) and `defaultTypes` (`frontend/.../campaigns/[id]/page.tsx`,
+    mirrors it to pre-check the boxes). **Change both or neither.**
+  - It is a **pre-check, not a lock**; the confirm dialog shows the audience and the
+    recipient count before sending. Decision 2026-07-28: keep it (big tools
+    pre-select nothing, but that suits hundreds of lists and new staff daily, not a
+    2–3-sends-a-week team whose policy this *is*). **Revisit at Teams + RBAC.**
+- **A scheduled campaign's audience is frozen** in `Campaign.sendOptions` and is what
+  the send page shows from then on — **including after "Cancel schedule"**.
+  Cancelling cancels the *time*, not who receives it.
 - Unsubscribe & suppression are **per brand**.
 - Inside a brand, multiple **teams** (Product, Marketing, Support, Sales...) share
   the client list; separated by team/type/tag. Teams are not fixed — add as needed.
@@ -183,7 +204,7 @@ guides the user through each manual task.
    broadcast via SES with filter, unsubscribe + suppression, bounce/complaint
    webhook + auto-pause, exactly-once sending, basic open/click tracking.
 2. **Phase 2** — multi-team + RBAC, approval workflow, template editor, filters +
-   saved segments, scheduling + timezone, analytics dashboard.
+   saved segments, ~~scheduling + timezone~~ ✅, ~~analytics dashboard~~ ✅.
 3. **Phase 3** — multi-brand, preference center, automation/drip/triggered, A/B.
 4. **Phase 4** — API auto-sync, list cleaning/sunset, monitoring, advanced deliverability.
 
@@ -203,6 +224,19 @@ guides the user through each manual task.
   dashboard — 9 findings, then 4 more caused partly by the first round's fixes).
   When reporting, state what each pass found and what was fixed. The user should
   never have to ask for a review.
+  - **The slash command may be blocked from model invocation.** If the Skill tool
+    refuses it, say so plainly and do the passes by hand — then ask the user to run
+    `/code-review` themselves. Worth it: on scheduling, the real tool found the
+    serious one (a superseded job could still send) that three hand passes missed.
+  - Reviews rarely reach zero, and that is normal — each round reaches a rarer
+    layer (round 3 on scheduling found a once-a-year DST bug). Judge by "would this
+    hurt the business?", not by "is the count zero?".
+  - **Bugs found by actually using the app still get through review.** The
+    "cancel schedule resets the audience" bug read as sensible code and was only
+    obvious in use. Prefer clicking through a feature over re-reading it.
+- **Test data:** use SES's `success@simulator.amazonses.com` (sandbox accepts it,
+  no real person is emailed). Name test rows with a clear prefix and **delete them
+  when done** — the user should never inherit test clutter.
 - **Branching rule:** for a **big feature**, ALWAYS create a branch first
   (e.g. `claude/<feature-name>`), build & test there, then merge to `main` via PR once
   it works (so main never breaks; a bad attempt is just a deleted branch). Only
