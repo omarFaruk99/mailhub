@@ -1,6 +1,6 @@
 # PROGRESS — where we are
 
-_Last updated: 2026-07-27 · Read this first in a new session._
+_Last updated: 2026-07-28 · Read this first in a new session._
 
 ## ✅ Phase 1 (MVP) — BUILT & verified (local dev)
 
@@ -105,6 +105,11 @@ real emails delivered via Amazon SES.
   shows a **Scheduled** pill, the chosen time, **Cancel schedule**, and **Update
   schedule**; the page polls every 15s while scheduled/sending so it updates itself
   when the send actually goes out. The Campaigns list has a **Scheduled for** column.
+  - The audience/filters shown come from `Campaign.sendOptions` whenever it exists —
+    **including after "Cancel schedule"**. Cancelling cancels the *time*, not the
+    choice of who receives it; falling back to the category default there silently
+    swapped a hand-picked audience (fixed 2026-07-28, reported from real use).
+  - (③ used to read "Send now; Schedule = Soon" — that is done now.)
 - **Analytics** (`/analytics`, in the sidebar): range chips (7/30/90 days), four stat
   tiles (Emails sent · Open rate · Click rate · Bounce rate), an **Engagement** line
   chart (sent/opened/clicked per day, hover crosshair + tooltip), a **Deliverability**
@@ -122,8 +127,40 @@ real emails delivered via Amazon SES.
   (`src/lib/use-brand.ts` uses the first brand).
 
 ### DB schema (Prisma models)
-Brand, Contact (now with `type` + `company`), Campaign, CampaignRecipient,
-Suppression. (Migrations in `backend/prisma/migrations/`.)
+Brand, Contact (now with `type` + `company`), Campaign (now with the scheduling
+fields), CampaignRecipient, Suppression, Template.
+(Migrations in `backend/prisma/migrations/`.)
+
+### Defaults the system applies (know these before changing behaviour)
+| Where | Default |
+| ----- | ------- |
+| New contact | `type=client`, `status=subscribed` (import = subscribed; no consent gate — owner's decision) |
+| CSV import | blank type → `client`; an **unrecognised** type is still imported as `client` but returned in `unknownTypes` and shown as a warning toast — never silently coerced |
+| CSV duplicate email | skipped (one email = one contact per brand) |
+| Category → audience | Product updates → client+prospect+internal · Marketing/Offers → client+prospect · Tips/Transactional → client |
+| New brand | 3 starter templates seeded |
+| New campaign | `status=draft` |
+| Merge tag | `{{name}}` with no name → "there" |
+| Every email | unsubscribe link + RFC 8058 header + open/click tracking auto-appended |
+| Schedule picker | now + 1 hour, browser timezone, minimum 2 minutes out |
+| Scheduled job | 2 retries, 1-hour expiry, 10s poll |
+| Send pacing | 200ms between emails (~5/sec) |
+| Analytics | 30-day range; warn at bounce 5%, complaint 0.1% |
+
+**Category → audience is a PRE-CHECK, not a lock** — the sender can change it, and
+the confirm dialog shows the chosen audience + recipient count before sending.
+The rule is written **twice**: `defaultTypesForCategory` (backend, authoritative)
+and `defaultTypes` (frontend, mirrors it for the checkboxes). **Change both or
+neither** — the backend applies it whenever the request omits `includeTypes`.
+
+**Decision (2026-07-28): keep the pre-check.** Big tools (Mailchimp/Brevo/Klaviyo)
+pre-select nothing, but they serve hundreds of lists and new staff daily; here the
+rule *is* company policy, volume is 2–3 sends/week, and the confirm dialog already
+forces a look. **Revisit when Teams + RBAC land** — an Editor who doesn't know the
+policy is the case that changes the answer (likeliest change then: stop
+pre-checking `internal`). Changing it later is cheap: two 5-line functions, no
+migration, and already-scheduled sends are unaffected because their audience is
+frozen in `Campaign.sendOptions`.
 
 ## Run locally
 1. `docker compose up -d db`
@@ -172,18 +209,28 @@ to email **actual customers**. Until then keep building + self-testing on verifi
 All buildable + self-testable now with personal credentials (SES production + deploy
 stay LAST, only at real launch — see the "Dev scope" section above).
 0. ~~**Analytics dashboard**~~ ✅ **DONE** · ~~**Scheduling**~~ ✅ **DONE**
-   (branches `claude/analytics-dashboard`, `claude/scheduling`).
-1. **Saved segments + working global search** (contact `type`/`company` filters exist;
+   (PRs #7–#11; branches `claude/analytics-dashboard`, `claude/scheduling*`).
+1. **Auto-pause (circuit breaker)** — stop sending when bounce/complaint spikes.
+   Small, and **mandatory before production**. It is the one guardrail big tools
+   have that we don't, and the no-consent-gate decision makes it load-bearing.
+2. **Saved segments + working global search** (contact `type`/`company` filters exist;
    save named segments + wire the sidebar search box).
-3. **Auto-pause (circuit breaker)** — stop sending when bounce/complaint spikes.
-   Small, and **mandatory before production**.
-4. **Teams + RBAC roles + approval workflow** (Draft→Review→Approve→Send) — one bigger
-   chunk (approval needs roles).
-5. **Template polish** — image **upload** button (needs Cloudflare R2 key) + a no-code
+3. **Teams + RBAC roles + approval workflow** (Draft→Review→Approve→Send) — one bigger
+   chunk (approval needs roles). **Revisit the category→audience pre-check here.**
+4. **Template polish** — image **upload** button (needs Cloudflare R2 key) + a no-code
    editor (drag-and-drop / fill-in-fields) for non-coders.
-6. **Multi-brand** (brand switcher) **+ preference center** (per-category opt-out).
-7. **LAST, at launch:** SES **production access** (+ SPF/DMARC) and **deploy**
-   (docker-compose + nginx + SSL on the company server).
+5. **Multi-brand** (brand switcher) **+ preference center** (per-category opt-out).
+6. **LAST, at launch:** SES **production access** (+ SPF/DMARC) and **deploy**
+   (docker-compose + nginx + SSL on the company server). Do the **`EmailEvent`
+   table** in the same round (see FINAL-PLAN.md §6) — it unlocks rolling
+   bounce/complaint rates, unique vs total opens, and device/country reports.
+
+### End-of-project checks (NOT code review — do these once the system is whole)
+Per-feature `/code-review` continues as normal; these are the ones that only make
+sense at the end: `/security-review` · deliverability checklist (SPF/DKIM/DMARC,
+warm-up, auto-pause) · a real-volume send (~800) for timing · one full path
+(add contact → template → send → track → unsubscribe) · deploy rehearsal
+(nginx, SSL, backups).
 
 ## ⏭️ Not built yet — full backlog (Phase 2+)
 - **Unified table** ✅ **DONE** — shared `DataTable` (`components/ui/data-table.tsx`)

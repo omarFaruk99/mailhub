@@ -110,12 +110,20 @@ router.post("/brands/:brandId/contacts/import", upload.single("file"), async (re
   const rows = parsed.data;
 
   const brandId = String(req.params.brandId);
+  // A misspelt type ("cliennt", "staff") used to become "client" in silence — and
+  // "client" is in the default audience of almost every category, so the mistake
+  // only surfaced as an email to the wrong person. Blank still means client; a
+  // value we don't recognise is imported as client too (never lose a contact) but
+  // reported back so the importer can be told.
+  const unknownTypes = new Set<string>();
   const data = rows
     .filter((r) => r.email && r.email.trim())
     .map((r) => {
-      // Only accept a known type; anything else falls back to "client".
-      const t = r.type?.trim().toLowerCase();
-      const type = (CONTACT_TYPES as readonly string[]).includes(t) ? t : "client";
+      const raw = r.type?.trim();
+      const t = raw?.toLowerCase();
+      const known = !!t && (CONTACT_TYPES as readonly string[]).includes(t);
+      if (raw && !known) unknownTypes.add(raw);
+      const type = known ? t! : "client";
       return {
         brandId,
         email: r.email.trim().toLowerCase(),
@@ -130,7 +138,13 @@ router.post("/brands/:brandId/contacts/import", upload.single("file"), async (re
 
   // skipDuplicates: an email already in this brand is skipped (no duplicates).
   const result = await prisma.contact.createMany({ data, skipDuplicates: true });
-  res.json({ received: rows.length, added: result.count, skipped: rows.length - result.count });
+  res.json({
+    received: rows.length,
+    added: result.count,
+    skipped: rows.length - result.count,
+    // Empty unless the file had a type column value we don't know.
+    unknownTypes: [...unknownTypes],
+  });
 });
 
 export default router;

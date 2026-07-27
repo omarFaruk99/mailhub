@@ -69,6 +69,15 @@ export default function ContactsPage() {
     mutationFn: (file: File) => api.importCsv(brandId!, file),
     onSuccess: (r) => {
       toast.success(`Imported: ${r.added} added, ${r.skipped} skipped`);
+      // A type the file used but we don't know was imported as "client" — and
+      // clients are in almost every category's default audience, so say it out
+      // loud instead of letting it show up later as mail to the wrong person.
+      if (r.unknownTypes?.length) {
+        toast.warning(
+          `Unknown contact type ${r.unknownTypes.map((t) => `"${t}"`).join(", ")} — those rows were imported as "client". Fix the type column and re-import, or edit them.`,
+          { duration: 12_000 }
+        );
+      }
       qc.invalidateQueries({ queryKey: ["contacts", brandId] });
     },
     onError: () => toast.error("Import failed"),

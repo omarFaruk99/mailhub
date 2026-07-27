@@ -257,8 +257,8 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 - Approval workflow
 - Drag-and-drop template editor + per-team library + brand kit
 - Filter + Saved Segment
-- Scheduling + timezone
-- Analytics dashboard + **contact activity timeline**
+- ~~Scheduling + timezone~~ ✅ **সম্পন্ন** (pg-boss; PROGRESS.md দেখুন)
+- ~~Analytics dashboard~~ ✅ **সম্পন্ন** + **contact activity timeline** (বাকি)
 
 **Phase 3 — Multi-brand ও Preference**
 - একাধিক brand (Tripgic, Tripmargin...) যোগ
@@ -286,6 +286,17 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
   unsubscribe + suppression + **auto-pause** থেকে, "কাকে পাঠাব" আটকে নয়। (সেরা চর্চা
   হলো শুধু consented লিস্ট — এটা মালিকের স্পষ্ট override, তাই guardrail কড়া রাখতে হবে।)
 - Campaign type ছোট রাখুন (৫–৭টা)।
+- **Category দেখে audience আগে থেকে টিক থাকা — রাখার সিদ্ধান্ত (২৮ জুলাই ২০২৬)।**
+  বড় টুল (Mailchimp / Brevo / Klaviyo) কিছুই আগে থেকে টিক করে না — কিন্তু তাদের শত শত
+  লিস্ট আর রোজ নতুন কর্মী। আমাদের ক্ষেত্রে নিয়মটাই **কোম্পানির নীতি**, সপ্তাহে ২–৩টা
+  send, আর পাঠানোর আগে confirm পপ-আপ audience ও সংখ্যা দেখায়। **Teams + RBAC আসার সময়
+  আবার ভাবতে হবে** — যে Editor নীতি জানে না, তার জন্য উত্তর বদলে যেতে পারে (তখন সম্ভাব্য
+  পরিবর্তন: `internal` আর আগে থেকে টিক না করা)। পরে বদলানো সহজ — দুটো ৫ লাইনের ফাংশন,
+  migration লাগে না, আর আগে থেকে schedule করা send-এ প্রভাব পড়ে না (তার audience
+  `Campaign.sendOptions`-এ জমা থাকে)।
+- **আমাদের বনাম বড় কোম্পানি — সবচেয়ে বড় ফাঁক:** তারা bounce/complaint বাড়লে **নিজে
+  থেকে পাঠানো থামায়**; আমাদের **auto-pause এখনো নেই**। consent gate না রাখার সিদ্ধান্তের
+  কারণে এটাই প্রধান রক্ষাকবচ — **production-এর আগে বাধ্যতামূলক**।
 - এখন **dedicated IP লাগবে না** — SES shared IP দিয়ে শুরু (দিনে ১ লাখ+ নিয়মিত হলে ভাবুন)।
 
 **ভবিষ্যতের জন্য টুকে রাখা (এখন বানাব না):**
