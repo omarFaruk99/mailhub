@@ -160,9 +160,12 @@ function CampaignSend() {
   });
 
   // ---- local UI state ----
+  // Audience/filters are overrides too. A SCHEDULED campaign must open on the
+  // audience frozen into it, not on the category default — otherwise re-saving
+  // the time silently widens the send (internal staff included, filters dropped).
   const [pickedTypes, setPickedTypes] = useState<ContactType[] | null>(null);
-  const [plan, setPlan] = useState("");
-  const [company, setCompany] = useState("");
+  const [planOverride, setPlanOverride] = useState<string | null>(null);
+  const [companyOverride, setCompanyOverride] = useState<string | null>(null);
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   // Email preview auto-height: the iframe grows to its content's full height so the
   // whole card (header + body) scrolls together in the stage — like reading a real
@@ -188,9 +191,6 @@ function CampaignSend() {
   const [whenOverride, setWhenOverride] = useState<"now" | "later" | null>(null);
   const [atOverride, setAtOverride] = useState<string | null>(null);
   const [tzOverride, setTzOverride] = useState<string | null>(null);
-  // One fixed instant to measure from, so the prefilled time doesn't drift on
-  // every render; the wall-clock strings are derived from it per timezone below.
-  const [baseTime] = useState(() => Date.now());
   const [tzList] = useState(() => timezoneOptions());
 
   // The recipients poll and the campaign poll are two independent 15s timers, so
@@ -210,7 +210,15 @@ function CampaignSend() {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
-  const types = pickedTypes ?? defaultTypes(campaign?.category);
+  // What the pending schedule was saved with, if any. Only while it is actually
+  // scheduled: once sent, the form should behave like a fresh send again.
+  const frozen = campaign?.status === "scheduled" ? campaign.sendOptions ?? null : null;
+
+  const types = pickedTypes ?? frozen?.includeTypes ?? defaultTypes(campaign?.category);
+  const plan = planOverride ?? frozen?.plan ?? "";
+  const company = companyOverride ?? frozen?.company ?? "";
+  const setPlan = setPlanOverride;
+  const setCompany = setCompanyOverride;
   const toggleType = (t: ContactType) =>
     setPickedTypes(types.includes(t) ? types.filter((x) => x !== t) : [...types, t]);
 
@@ -236,17 +244,22 @@ function CampaignSend() {
   const isScheduled = campaign?.status === "scheduled";
   const whenMode = whenOverride ?? (isScheduled ? "later" : "now");
   const timezone = tzOverride ?? campaign?.timezone ?? browserTimezone();
+  // Read "now" on each render rather than freezing it at mount: on a page left
+  // open for an hour, a frozen suggestion would already be in the past.
+  const nowMs = Date.now();
   // Both are wall clock IN `timezone`, so switching zone moves the suggestion
   // with it instead of leaving a time that is already past there.
-  const minAt = zoneInputValue(baseTime, 2, timezone);
+  const minAt = zoneInputValue(nowMs, 2, timezone);
   const scheduleAt =
     atOverride ??
     (campaign?.scheduledAt
       ? toLocalInput(campaign.scheduledAt, campaign.timezone)
-      : zoneInputValue(baseTime, 60, timezone));
-  // Same rule as the backend: at least a minute out. The input is wall-clock time
-  // in `timezone`, so this local check is approximate — the server has the final say.
-  const scheduleLooksValid = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(scheduleAt);
+      : zoneInputValue(nowMs, 60, timezone));
+  // Same rule as the backend: at least a minute out. Both sides of this
+  // comparison are wall clock in the SAME zone and zero-padded, so comparing the
+  // strings is exactly comparing the instants — no second conversion needed.
+  const scheduleIsFuture = scheduleAt >= zoneInputValue(nowMs, 1, timezone);
+  const scheduleLooksValid = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(scheduleAt) && scheduleIsFuture;
 
   const filterBody = { includeTypes: types, ...(plan ? { plan } : {}), ...(company ? { company } : {}) };
 
@@ -727,6 +740,11 @@ function CampaignSend() {
                       {tzList.map((z) => <option key={z} value={z}>{z}</option>)}
                     </select>
                   </label>
+                  {!scheduleIsFuture && (
+                    <p className="text-[12px] text-destructive">
+                      That time has already passed in {timezone}. Pick a later one.
+                    </p>
+                  )}
                   <p className="flex items-start gap-1.5 text-[12px] text-muted-foreground">
                     <Clock className="mt-0.5 size-3.5 flex-none" />
                     The audience and filters above are saved with the schedule, and the

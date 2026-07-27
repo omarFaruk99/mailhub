@@ -53,12 +53,13 @@ async function runSendJob(campaignId: string, jobId: string, isLastAttempt: bool
     console.log(`[queue] campaign ${campaignId} sent:`, result);
   } catch (err) {
     if (isLastAttempt) {
-      // No retry left. Leaving it "scheduled" would show a time in the UI that
-      // nothing will ever act on, so put it back to draft — visibly not sent.
+      // No retry left. "draft" would be indistinguishable from never-scheduled,
+      // hiding the failure in a log nobody reads — mark it failed, which both
+      // badges already render in red.
       console.error(`[queue] campaign ${campaignId} gave up after the last retry:`, err);
       await prisma.campaign.update({
         where: { id: campaignId },
-        data: { status: "draft", scheduledAt: null, timezone: null, jobId: null },
+        data: { status: "failed", scheduledAt: null, timezone: null, jobId: null },
       });
     } else {
       // Back to "scheduled" so the retry finds it in the state the guard expects;

@@ -35,13 +35,18 @@ app.use("/", webhooksRouter);
 app.use("/", analyticsRouter);
 
 const port = Number(process.env.BACKEND_PORT) || 4000;
+
+// Scheduled sends, started BEFORE the first request is accepted. Its startup
+// step resets campaigns left mid-send by a crash, which is only safe while
+// nothing can be in flight — if the API were already serving, a "Send now" in
+// that window would be reset out from under itself.
+// A queue failure is caught inside startQueue() and only disables scheduling, so
+// this can never stop the API from coming up.
+await startQueue();
+
 const server = app.listen(port, () => {
   console.log(`Backend running on http://localhost:${port}`);
 });
-
-// Scheduled sends. Started after the server is listening so a queue problem can
-// never stop the API from coming up (sending now keeps working either way).
-startQueue();
 
 // Let pg-boss finish/return the job it holds before the process dies, otherwise
 // a dev restart leaves the job locked until its heartbeat expires.
