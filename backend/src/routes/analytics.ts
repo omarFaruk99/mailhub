@@ -16,11 +16,19 @@ const rate = (part: number, whole: number) => (whole > 0 ? part / whole : null);
 
 // GET /brands/:brandId/analytics?days=30
 //
-// Everything except `contacts`/`campaigns` counts and the per-campaign table is
-// scoped to the last `days` days, so the number on screen always matches the
-// range the user picked. The window is a COHORT: an email counts on the day it
-// was sent, and its later open/click counts against that same day. That keeps
-// the rates honest (opens can never exceed the sends they are divided by).
+// Two different scopes live in this response, and the UI labels each one:
+//
+//  * `totals` / `rates` / `series` — the last `days` days, as a COHORT: an email
+//    counts on the day it was sent, and its later open/click counts against that
+//    same day. Opens can therefore never exceed the sends they divide by.
+//  * `deliverability` — ALL TIME, both numerator and denominator. Suppression is
+//    a state table (one row per address, upserted in place), not an event log, so
+//    its rows cannot be sliced into a time window: `createdAt` is the date the
+//    address was first suppressed, not the date of the event being counted.
+//    Windowing it would divide window-less events by windowed sends and produce
+//    rates above 100%. A true rolling bounce/complaint rate needs a per-event
+//    table — planned for when SES production access lands and SES starts sending
+//    delivery events.
 router.get("/brands/:brandId/analytics", async (req, res) => {
   const brandId = req.params.brandId;
   const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
@@ -40,8 +48,9 @@ router.get("/brands/:brandId/analytics", async (req, res) => {
     select: { status: true, sentAt: true, openedAt: true, clickedAt: true },
   });
 
+  // All-time — see the scope note above.
   const suppressions = await prisma.suppression.findMany({
-    where: { brandId, createdAt: { gte: windowStart } },
+    where: { brandId },
     select: { reason: true },
   });
 
@@ -51,10 +60,12 @@ router.get("/brands/:brandId/analytics", async (req, res) => {
     orderBy: { createdAt: "desc" },
   });
 
-  const [contactCount, subscribedCount, campaignsSent] = await Promise.all([
+  const [contactCount, subscribedCount, campaignsSent, sentAllTime] = await Promise.all([
     prisma.contact.count({ where: { brandId } }),
     prisma.contact.count({ where: { brandId, status: "subscribed" } }),
     prisma.campaign.count({ where: { brandId, status: "sent" } }),
+    // Denominator for the all-time deliverability rates.
+    prisma.campaignRecipient.count({ where: { campaign: { brandId }, status: "sent" } }),
   ]);
 
   // ---- Totals for the window ----
@@ -73,18 +84,27 @@ router.get("/brands/:brandId/analytics", async (req, res) => {
     clicked: sentRows.filter((r) => r.clickedAt).length,
   };
 
+  // Engagement rates — window ÷ window.
+  const rates = {
+    open: rate(totals.opened, totals.sent),
+    click: rate(totals.clicked, totals.sent),
+  };
+
+  // Deliverability — all time ÷ all time.
   const bounces = suppressions.filter((s) => s.reason === "bounce").length;
   const complaints = suppressions.filter((s) => s.reason === "complaint").length;
   const unsubscribes = suppressions.filter((s) => s.reason === "unsubscribe").length;
 
-  // All rates are (events in window) ÷ (emails sent in window) — the same shape
-  // SES uses for its rolling bounce/complaint limits.
-  const rates = {
-    open: rate(totals.opened, totals.sent),
-    click: rate(totals.clicked, totals.sent),
-    bounce: rate(bounces, totals.sent),
-    complaint: rate(complaints, totals.sent),
-    unsubscribe: rate(unsubscribes, totals.sent),
+  const deliverability = {
+    sent: sentAllTime,
+    bounce: bounces,
+    complaint: complaints,
+    unsubscribe: unsubscribes,
+    rates: {
+      bounce: rate(bounces, sentAllTime),
+      complaint: rate(complaints, sentAllTime),
+      unsubscribe: rate(unsubscribes, sentAllTime),
+    },
   };
 
   // ---- Daily series (zero-filled, bucketed on the send day) ----
@@ -154,7 +174,7 @@ router.get("/brands/:brandId/analytics", async (req, res) => {
     windowStart,
     totals,
     rates,
-    suppressions: { bounce: bounces, complaint: complaints, unsubscribe: unsubscribes, total: suppressions.length },
+    deliverability,
     series,
     campaigns: perCampaign,
   });

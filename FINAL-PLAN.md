@@ -109,6 +109,7 @@ Draft (তৈরি) → Review (পরীক্ষা) → Approve (অনু�
 | **SNS webhook signature verify** | ভুয়া bounce event ঢোকানো ঠেকায় (security) |
 | **Exactly-once sending** | worker crash করলেও একজন একবারই মেইল পায় |
 | **Branded tracking domain** (`click.brand.com`) — unsubscribe/open/click লিংক নিজের subdomain দিয়ে যাবে, raw backend ডোমেইনের বদলে | **সবার শেষে করব** — জরুরি না, marketing/transactional subdomain সেটাপের সাথেই একসাথে করা যাবে (বাড়তি খরচ/কাজ প্রায় শূন্য) |
+| **`EmailEvent` টেবিল (ভবিষ্যতে)** — এখন প্রতিটা ঘটনা আলাদা করে রাখা হয় না: recipient row-তে শুধু **প্রথম** open/click-এর সময় থাকে, আর `Suppression` হলো *অবস্থা* (প্রতি ইমেইলে এক row), *ঘটনার লিস্ট* নয়। তাই bounce/complaint হার শুধু **সারাজীবনের** হিসাব করা যায়, "গত ৩০ দিনের" নয়। | **SES production-এর সময় করব** — তখন SES delivery/open/click/bounce event পাঠাবে; প্রতি ঘটনা আলাদা row-তে রাখলে rolling bounce/complaint rate, unique vs total open, device/country — সব সম্ভব হবে। |
 | **Failed-send retry (ভবিষ্যতে)** — কোনো মেইল `failed` হলে (নেটওয়ার্ক/SES সমস্যায় *যেতেই পারল না* — bounce নয়) এখন তার recipient-row তৈরি হয়ে যায়, আর exactly-once নিয়মে সেটা আর retry হয় না; send পেজ "Sent" দেখায়। | **SES production-এর সময় করব** — failed recipient আলাদা করে চেনা ও **শুধু ওগুলো** আবার পাঠানোর ("Retry failed") সুযোগ যোগ করতে হবে (ডুপ্লিকেট ছাড়া)। এখন verified টেস্ট ইমেইলে পাঠানো হয় বলে জরুরি না। |
 
 ### ২০২৬ Bulk Sender নিয়ম (Google / Yahoo / Microsoft)

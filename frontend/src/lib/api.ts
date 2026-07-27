@@ -69,14 +69,19 @@ export type Analytics = {
     opened: number;
     clicked: number;
   };
-  rates: {
-    open: number | null;
-    click: number | null;
-    bounce: number | null;
-    complaint: number | null;
-    unsubscribe: number | null;
+  /** Engagement, scoped to the window. */
+  rates: { open: number | null; click: number | null };
+  /**
+   * Deliverability is ALL TIME on both sides of the division — Suppression is a
+   * state table, not an event log, so it cannot be sliced by date.
+   */
+  deliverability: {
+    sent: number;
+    bounce: number;
+    complaint: number;
+    unsubscribe: number;
+    rates: { bounce: number | null; complaint: number | null; unsubscribe: number | null };
   };
-  suppressions: { bounce: number; complaint: number; unsubscribe: number; total: number };
   series: { date: string; sent: number; opened: number; clicked: number }[];
   campaigns: {
     id: string;

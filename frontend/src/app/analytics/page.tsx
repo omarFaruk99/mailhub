@@ -11,6 +11,7 @@ import { Chip } from "@/components/ui/chip";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Tag } from "@/components/ui/tag";
 import { LineChart } from "@/components/charts/line-chart";
+import { LoadError } from "@/components/load-error";
 
 const RANGES = [7, 30, 90];
 
@@ -98,6 +99,11 @@ export default function AnalyticsPage() {
       />
 
       <div className="flex w-full max-w-6xl flex-col gap-6 p-6">
+        {/* Never let a failed fetch read as "this brand has no activity". */}
+        {q.isError ? (
+          <LoadError message={(q.error as Error)?.message} onRetry={() => q.refetch()} />
+        ) : (
+        <>
         {/* Every number below is scoped to the selected range. */}
         <p className="-mb-2 text-sm text-muted-foreground">
           Showing the last <span className="text-foreground">{days} days</span>. Emails count
@@ -131,8 +137,8 @@ export default function AnalyticsPage() {
           />
           <Stat
             label="Bounce rate"
-            value={pct(a?.rates.bounce)}
-            hint={a ? `${a.suppressions.bounce} bounced` : undefined}
+            value={pct(a?.deliverability.rates.bounce)}
+            hint={a ? `${a.deliverability.bounce} bounced · all time` : undefined}
           />
         </div>
 
@@ -164,29 +170,30 @@ export default function AnalyticsPage() {
           <CardHeader>
             <CardTitle className="text-base">Deliverability</CardTitle>
             <CardDescription>
-              Share of the emails sent in the last {days} days. Keep bounce under 5% and
-              complaints under 0.1% — above that, Amazon SES can block sending.
+              All time, not the selected range — share of every email this brand has sent.
+              Keep bounce under 5% and complaints under 0.1%: above that, Amazon SES can
+              block sending.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-3">
             <Health
               label="Bounce"
-              rate={a?.rates.bounce ?? null}
-              count={a?.suppressions.bounce}
+              rate={a?.deliverability.rates.bounce ?? null}
+              count={a?.deliverability.bounce}
               limit={0.05}
               limitLabel="limit 5%"
             />
             <Health
               label="Complaint"
-              rate={a?.rates.complaint ?? null}
-              count={a?.suppressions.complaint}
+              rate={a?.deliverability.rates.complaint ?? null}
+              count={a?.deliverability.complaint}
               limit={0.001}
               limitLabel="limit 0.1%"
             />
             <Health
               label="Unsubscribe"
-              rate={a?.rates.unsubscribe ?? null}
-              count={a?.suppressions.unsubscribe}
+              rate={a?.deliverability.rates.unsubscribe ?? null}
+              count={a?.deliverability.unsubscribe}
               limitLabel="no hard limit"
             />
           </CardContent>
@@ -211,6 +218,8 @@ export default function AnalyticsPage() {
             />
           </CardContent>
         </Card>
+        </>
+        )}
       </div>
     </>
   );

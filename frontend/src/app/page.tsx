@@ -9,6 +9,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { StatusBadge } from "@/components/status-badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { LineChart } from "@/components/charts/line-chart";
+import { LoadError } from "@/components/load-error";
 import type { Campaign } from "@/lib/api";
 
 // A rate is null when there is nothing to divide by — show "—", never a fake 0%.
@@ -27,6 +28,7 @@ export default function Dashboard() {
     enabled: !!brandId,
   });
   const a = analytics.data;
+  const failed = analytics.isError || campaigns.isError;
 
   const columns: Column<Campaign>[] = [
     { key: "name", header: "Name", width: 240, cell: (c) => <Link href={`/campaigns/${c.id}`} className="hover:underline">{c.name}</Link> },
@@ -39,6 +41,17 @@ export default function Dashboard() {
     <>
       <PageHeader title="Dashboard" subtitle={brand ? `${brand.name} · ${brand.domain}` : "Loading…"} />
       <div className="flex w-full max-w-6xl flex-col gap-6 p-6">
+        {/* A failed fetch must not read as "this brand has no activity". */}
+        {failed && (
+          <LoadError
+            message={((analytics.error ?? campaigns.error) as Error)?.message}
+            onRetry={() => {
+              analytics.refetch();
+              campaigns.refetch();
+            }}
+          />
+        )}
+
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Stat
             label="Subscribed contacts"
@@ -71,7 +84,9 @@ export default function Dashboard() {
             <LineChart
               labels={(a?.series ?? []).map((s) => s.date)}
               formatLabel={shortDate}
-              emptyMessage={!brandId || analytics.isPending ? "Loading…" : "No sends in this period."}
+              emptyMessage={
+                failed ? "Could not load." : !brandId || analytics.isPending ? "Loading…" : "No sends in this period."
+              }
               series={[
                 { key: "sent", label: "Sent", color: "var(--series-1)", values: (a?.series ?? []).map((s) => s.sent) },
                 { key: "opened", label: "Opened", color: "var(--series-2)", values: (a?.series ?? []).map((s) => s.opened) },
@@ -88,11 +103,11 @@ export default function Dashboard() {
           <CardContent className="p-0">
             <DataTable
               indexed
-              loading={!campaigns.data}
+              loading={!brandId || campaigns.isPending}
               columns={columns}
               rows={(campaigns.data ?? []).slice(0, 6)}
               rowKey={(c) => c.id}
-              empty="No campaigns yet."
+              empty={campaigns.isError ? "Could not load campaigns." : "No campaigns yet."}
             />
           </CardContent>
         </Card>

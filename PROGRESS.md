@@ -35,10 +35,19 @@ real emails delivered via Amazon SES.
   called on brand create). `{{name}}` **merge tag** is replaced per recipient at send
   time (HTML-escaped, in `campaigns.ts`).
 - **Analytics**: `GET /brands/:brandId/analytics?days=N` (`src/routes/analytics.ts`) —
-  totals (sent/failed/opened/clicked, contacts, campaigns), rates
-  (open/click/bounce/complaint/unsubscribe), a zero-filled **daily series** for the last
-  N days (UTC buckets), and **per-campaign** performance. A rate is `null` (never 0)
-  when there is nothing to divide by, so the UI can show "—" instead of fake data.
+  windowed totals + open/click rates, a zero-filled **daily series** for the last N days
+  (UTC buckets), all-time **deliverability** (bounce/complaint/unsubscribe), and
+  **per-campaign** performance. A rate is `null` (never 0) when there is nothing to
+  divide by, so the UI shows "—" instead of fake data.
+  - **Two scopes, on purpose:** engagement is a **cohort window** (an email counts on
+    its send day; its later open/click counts against that same day, so a rate can
+    never exceed 100%). **Deliverability is all-time** — `Suppression` is a *state*
+    table (one row per address, upserted in place), not an event log, so it cannot be
+    sliced by date. A true rolling bounce/complaint rate needs a per-event table →
+    do it with **SES production access** (see FINAL-PLAN.md §6).
+  - Open/click tracking records the **first** event only, so past days never change.
+  - `webhooks.ts` only **escalates** a suppression reason (complaint > bounce >
+    unsubscribe), never downgrades — a bounce can't be erased by a later event.
 - CORS enabled for the frontend.
 - Key files: `src/index.ts`, `src/routes/{brands,campaigns,templates,email,tracking,webhooks,analytics}.ts`,
   `src/email/ses.ts`, `src/prisma.ts`, `prisma/schema.prisma`, `prisma.config.ts`.
