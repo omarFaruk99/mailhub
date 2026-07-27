@@ -131,6 +131,11 @@ export async function startQueue(): Promise<PgBoss | null> {
     await instance.createQueue(SEND_QUEUE, queueOptions);
     await instance.updateQueue(SEND_QUEUE, queueOptions);
 
+    // BEFORE the worker starts: once jobs can be picked up, this would race with
+    // a send that has just claimed its campaign and reset "sending" → "scheduled"
+    // underneath it, disarming the "being sent right now" guards.
+    await recoverInterruptedSends(instance);
+
     // One job at a time. No explicit generics here: pg-boss picks the
     // with-metadata handler shape from the literal `includeMetadata: true`,
     // and naming the types would erase it.
@@ -143,8 +148,6 @@ export async function startQueue(): Promise<PgBoss | null> {
         }
       }
     );
-
-    await recoverInterruptedSends(instance);
 
     boss = instance;
     console.log("[queue] pg-boss started");

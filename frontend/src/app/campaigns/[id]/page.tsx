@@ -57,11 +57,13 @@ function timezoneOptions(): string[] {
   return [...new Set(["UTC", "Asia/Dhaka", "Asia/Kolkata", "Asia/Dubai", "Europe/London", "America/New_York", browserTimezone()])];
 }
 
-// "2026-07-28T14:30" for an <input type="datetime-local">, `minutesAhead` from now.
-function localInputValue(minutesAhead = 0) {
-  const d = new Date(Date.now() + minutesAhead * 60_000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+// "2026-07-28T14:30" for an <input type="datetime-local">: the wall clock
+// `minutesAhead` from `from`, read in `timeZone`. The input's value is always
+// interpreted in the *selected* zone, so the default and the minimum have to be
+// computed there too — a browser-local time would be in the past for any zone
+// ahead of the viewer's.
+function zoneInputValue(from: number, minutesAhead: number, timeZone: string) {
+  return toLocalInput(new Date(from + minutesAhead * 60_000).toISOString(), timeZone);
 }
 
 // The reverse of localInputValue: a stored instant → the wall clock it shows in
@@ -186,9 +188,18 @@ function CampaignSend() {
   const [whenOverride, setWhenOverride] = useState<"now" | "later" | null>(null);
   const [atOverride, setAtOverride] = useState<string | null>(null);
   const [tzOverride, setTzOverride] = useState<string | null>(null);
-  const [defaultAt] = useState(() => localInputValue(60)); // an hour from now
-  const [minAt] = useState(() => localInputValue(2)); // fixed once, so it can't churn per render
+  // One fixed instant to measure from, so the prefilled time doesn't drift on
+  // every render; the wall-clock strings are derived from it per timezone below.
+  const [baseTime] = useState(() => Date.now());
   const [tzList] = useState(() => timezoneOptions());
+
+  // The recipients poll and the campaign poll are two independent 15s timers, so
+  // whichever fires last decides whether the table ever gets its final rows. Pull
+  // them explicitly the moment the send finishes.
+  const finishedStatus = campaign?.status === "sent" || campaign?.status === "failed";
+  useEffect(() => {
+    if (finishedStatus) qc.invalidateQueries({ queryKey: ["recipients", id] });
+  }, [finishedStatus, id, qc]);
 
   // Full screen: the toggle button shows on both tabs and Escape also exits, so
   // there is always a way out (no stranded overlay). Escape is the keyboard path.
@@ -224,9 +235,15 @@ function CampaignSend() {
   // ---- when to send ----
   const isScheduled = campaign?.status === "scheduled";
   const whenMode = whenOverride ?? (isScheduled ? "later" : "now");
-  const scheduleAt =
-    atOverride ?? (campaign?.scheduledAt ? toLocalInput(campaign.scheduledAt, campaign.timezone) : defaultAt);
   const timezone = tzOverride ?? campaign?.timezone ?? browserTimezone();
+  // Both are wall clock IN `timezone`, so switching zone moves the suggestion
+  // with it instead of leaving a time that is already past there.
+  const minAt = zoneInputValue(baseTime, 2, timezone);
+  const scheduleAt =
+    atOverride ??
+    (campaign?.scheduledAt
+      ? toLocalInput(campaign.scheduledAt, campaign.timezone)
+      : zoneInputValue(baseTime, 60, timezone));
   // Same rule as the backend: at least a minute out. The input is wall-clock time
   // in `timezone`, so this local check is approximate — the server has the final say.
   const scheduleLooksValid = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(scheduleAt);
@@ -396,12 +413,15 @@ function CampaignSend() {
           <span className="text-muted-foreground/50">/</span>
           <span className="truncate font-semibold">{campaign?.name ?? "…"}</span>
         </div>
+        {/* Order matters: `isSent` includes "has recipient rows", so a campaign
+            that ran once and is now scheduled again must be read as Scheduled,
+            not Sent. Test the exact statuses first, the row count last. */}
         <StatusPill
           status={
             isSending ? "sending"
-              : campaign?.status === "failed" ? "failed"
-                : isSent ? "sent"
-                  : isScheduled ? "scheduled"
+              : isScheduled ? "scheduled"
+                : campaign?.status === "failed" ? "failed"
+                  : isSent ? "sent"
                     : "draft"
           }
         />
@@ -692,9 +712,7 @@ function CampaignSend() {
                     <Input
                       type="datetime-local"
                       value={scheduleAt}
-                      // The value is wall-clock time in the *selected* zone, so a
-                      // browser-local minimum only makes sense when they match.
-                      min={timezone === browserTimezone() ? minAt : undefined}
+                      min={minAt}
                       onChange={(e) => setAtOverride(e.target.value)}
                       className="h-9 text-[13.5px]"
                     />
