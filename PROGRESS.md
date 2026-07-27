@@ -41,7 +41,14 @@ real emails delivered via Amazon SES.
     run **the exact same code**.
   - `Campaign` gained `scheduledAt` (UTC instant) · `timezone` (IANA, for display) ·
     `sendOptions` (audience+filters frozen at schedule time) · `jobId`.
-    Status is now `draft | scheduled | sending | sent`.
+    Status is now `draft | scheduled | sending | sent | failed`
+    (`failed` = the send ran but **nothing** was delivered — never a green "Sent").
+  - **`Campaign.jobId` is the single source of truth** for which job may send a
+    campaign: the worker only proceeds when the firing job's id still matches. A
+    superseded job whose cancel failed is therefore powerless (pg-boss's default
+    `standard` policy does **not** deduplicate by `singletonKey` — don't rely on it).
+  - On startup, a campaign left at `sending` by a crash is reset — to `scheduled` if
+    its job is still queued, otherwise to `draft`. Assumes one backend process.
   - Wall-clock → UTC conversion is `src/lib/timezone.ts` (built-in `Intl`, DST-safe,
     no date library).
   - The worker **claims** the campaign with one conditional UPDATE, so cancelling at

@@ -160,9 +160,13 @@ export async function sendCampaign(campaignId: string, filter: SendFilter): Prom
 
   // The send is over: clear any scheduling state so a finished campaign never
   // looks like it is still waiting to go out.
+  // "failed" when every attempt failed — on a scheduled send nobody is watching
+  // the result, and a green "Sent" badge on a campaign that delivered nothing
+  // would be a lie. Zero matches is not a failure: there was nothing to send.
+  const finalStatus = sent === 0 && failed > 0 ? "failed" : "sent";
   await prisma.campaign.update({
     where: { id: campaign.id },
-    data: { status: "sent", jobId: null },
+    data: { status: finalStatus, jobId: null },
   });
 
   return { matched: contacts.length, sent, skippedSuppressed, skippedAlready, failed, includeTypes };

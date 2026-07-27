@@ -47,11 +47,12 @@ startQueue();
 // a dev restart leaves the job locked until its heartbeat expires.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, async () => {
-    await stopQueue().catch(() => {});
-    // A keep-alive connection (the frontend polls) can hold server.close() open
-    // forever, which would hang every dev restart — so exit anyway after 5s.
-    const force = setTimeout(() => process.exit(0), 5000);
+    // Armed BEFORE the awaits: pg-boss's graceful stop can take ~30s and a
+    // keep-alive connection (the frontend polls) can hold server.close() open
+    // forever. Either would hang every dev restart, so exit regardless after 8s.
+    const force = setTimeout(() => process.exit(0), 8000);
     force.unref();
+    await stopQueue().catch(() => {});
     server.close(() => process.exit(0));
   });
 }

@@ -70,17 +70,30 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
     return res.status(409).json({ error: "this campaign is being sent right now" });
   }
 
-  // Sending now cancels any pending schedule, so it can't fire again later.
-  if (campaign.jobId) {
-    await getQueue()?.cancel(SEND_QUEUE, campaign.jobId).catch(() => {});
-    await prisma.campaign.update({
-      where: { id: campaign.id },
-      data: { jobId: null, scheduledAt: null, timezone: null },
-    });
+  // Claim it the same way the worker does, in one conditional write. Without
+  // this the status stays "draft" for the whole loop, and the "being sent right
+  // now" guards above and in /schedule would never actually trigger.
+  // Clearing jobId here is what stops a pending scheduled job from firing later:
+  // the worker only sends when Campaign.jobId still matches its own job id.
+  const claimed = await prisma.campaign.updateMany({
+    where: { id: campaign.id, status: { in: ["draft", "scheduled", "sent", "failed"] } },
+    data: { status: "sending", jobId: null, scheduledAt: null, timezone: null },
+  });
+  if (claimed.count === 0) {
+    return res.status(409).json({ error: "this campaign is being sent right now" });
   }
+  // Best-effort tidy-up; the jobId check above is the real guarantee.
+  if (campaign.jobId) await getQueue()?.cancel(SEND_QUEUE, campaign.jobId).catch(() => {});
 
-  const result = await sendCampaign(campaign.id, filter.data as SendFilter);
-  return res.json(result);
+  try {
+    const result = await sendCampaign(campaign.id, filter.data as SendFilter);
+    return res.json(result);
+  } catch (e) {
+    // sendCampaign sets the final status itself; it only throws before getting
+    // there, so release the claim instead of leaving the campaign stuck.
+    await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "draft" } });
+    throw e;
+  }
 });
 
 // ---- Schedule a campaign (send later) ----
@@ -115,9 +128,10 @@ router.post("/campaigns/:campaignId/schedule", async (req, res) => {
     return res.status(400).json({ error: "pick a time at least a minute from now" });
   }
 
-  // Re-scheduling: drop the old job first so only one can ever fire.
-  if (campaign.jobId) await queue.cancel(SEND_QUEUE, campaign.jobId).catch(() => {});
-
+  // New job FIRST. Cancelling the old one first would, if this send failed,
+  // leave the campaign showing its old time with nothing left to fire it.
+  // (singletonKey is only a readable handle for queries — pg-boss's default
+  // `standard` policy does not deduplicate on it, so it is not a safety net.)
   const jobId = await queue.send(
     SEND_QUEUE,
     { campaignId: campaign.id } satisfies SendJobData,
@@ -129,6 +143,11 @@ router.post("/campaigns/:campaignId/schedule", async (req, res) => {
     where: { id: campaign.id },
     data: { status: "scheduled", scheduledAt: runAt, timezone, sendOptions: filter, jobId },
   });
+
+  // Now the row points at the new job, the old one is already powerless (the
+  // worker checks jobId); cancelling just keeps the queue tidy.
+  if (campaign.jobId) await queue.cancel(SEND_QUEUE, campaign.jobId).catch(() => {});
+
   return res.json(updated);
 });
 
