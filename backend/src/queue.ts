@@ -80,12 +80,20 @@ export async function startQueue(): Promise<PgBoss | null> {
     instance.on("error", (err: unknown) => console.error("[queue] error:", err));
 
     await instance.start();
-    await instance.createQueue(SEND_QUEUE);
 
-    // A campaign send is long (one SES call per contact, rate-limited), so take
-    // one job at a time and give it a generous window before pg-boss reclaims it.
-    // No explicit generics here: pg-boss picks the with-metadata handler shape
-    // from the literal `includeMetadata: true`, and naming the types would erase it.
+    // A send is slow on purpose: one SES call per contact with a 200ms gap, so
+    // ~5 contacts a second. pg-boss's default 15-minute expiry would reclaim a
+    // job of more than ~4,500 contacts *while it is still running* and start a
+    // second copy. An hour covers any list we will realistically send to.
+    // (createQueue is a no-op once the queue exists, so updateQueue applies the
+    // setting to a queue created before this option was added.)
+    const queueOptions = { expireInSeconds: 3600 };
+    await instance.createQueue(SEND_QUEUE, queueOptions);
+    await instance.updateQueue(SEND_QUEUE, queueOptions);
+
+    // One job at a time. No explicit generics here: pg-boss picks the
+    // with-metadata handler shape from the literal `includeMetadata: true`,
+    // and naming the types would erase it.
     await instance.work(
       SEND_QUEUE,
       { batchSize: 1, pollingIntervalSeconds: 10, includeMetadata: true },

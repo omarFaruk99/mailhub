@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ContactType } from "@/lib/api";
 import { useBrand } from "@/lib/use-brand";
-import type { Contact, Recipient } from "@/lib/api";
+import type { Campaign, Contact, Recipient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -146,7 +146,16 @@ function CampaignSend() {
   const campaign = campaigns.data?.find((c) => c.id === id);
   const contacts = useQuery({ queryKey: ["contacts", brandId], queryFn: () => api.contacts(brandId!), enabled: !!brandId });
   const suppressions = useQuery({ queryKey: ["suppressions", brandId], queryFn: () => api.suppressions(brandId!), enabled: !!brandId });
-  const recipients = useQuery({ queryKey: ["recipients", id], queryFn: () => api.recipients(id) });
+  const recipients = useQuery({
+    queryKey: ["recipients", id],
+    queryFn: () => api.recipients(id),
+    // The worker fills this table, not this screen. Without polling, a scheduled
+    // send flips the page to "Sent" and then shows an empty recipients list.
+    refetchInterval: () => {
+      const c = qc.getQueryData<Campaign[]>(["campaigns", brandId])?.find((x) => x.id === id);
+      return c?.status === "scheduled" || c?.status === "sending" ? 15_000 : false;
+    },
+  });
 
   // ---- local UI state ----
   const [pickedTypes, setPickedTypes] = useState<ContactType[] | null>(null);
