@@ -195,6 +195,14 @@ guides the user through each manual task.
 
 ## Workflow notes
 
+- **Review-before-reporting rule (MANDATORY):** after building a feature, run
+  **`/code-review` TWICE** — fix everything real from the first pass, then run it
+  again on the fixed code — **before** telling the user the work is done. The second
+  pass is not optional: round-1 fixes are new, unreviewed code and regularly
+  introduce their own bugs (this is exactly how it went with the analytics
+  dashboard — 9 findings, then 4 more caused partly by the first round's fixes).
+  When reporting, state what each pass found and what was fixed. The user should
+  never have to ask for a review.
 - **Branching rule:** for a **big feature**, ALWAYS create a branch first
   (e.g. `claude/<feature-name>`), build & test there, then merge to `main` via PR once
   it works (so main never breaks; a bad attempt is just a deleted branch). Only
