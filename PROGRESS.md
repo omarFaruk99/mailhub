@@ -34,6 +34,23 @@ real emails delivered via Amazon SES.
   `GET /starter-templates` and **auto-seeded into every new brand** (`seedStarterTemplates`,
   called on brand create). `{{name}}` **merge tag** is replaced per recipient at send
   time (HTML-escaped, in `campaigns.ts`).
+- **Scheduling (send later)**: `POST /campaigns/:id/schedule` + `/unschedule`, run by
+  **pg-boss** (`src/queue.ts`, queue `campaign-send`) — jobs live in our own PostgreSQL
+  (`pgboss` schema), so a scheduled send survives a server restart.
+  - The send loop moved to `src/email/send-campaign.ts` so "Send now" and the worker
+    run **the exact same code**.
+  - `Campaign` gained `scheduledAt` (UTC instant) · `timezone` (IANA, for display) ·
+    `sendOptions` (audience+filters frozen at schedule time) · `jobId`.
+    Status is now `draft | scheduled | sending | sent`.
+  - Wall-clock → UTC conversion is `src/lib/timezone.ts` (built-in `Intl`, DST-safe,
+    no date library).
+  - The worker **claims** the campaign with one conditional UPDATE, so cancelling at
+    the moment it fires either wins cleanly or is refused ("too late to cancel"). A
+    crashed mid-send is picked up again on retry; duplicate emails are still
+    impossible (unique recipient row per campaign+contact).
+  - Known gap: no "Retry failed" for a send that gave up — after the last retry the
+    campaign goes back to **draft** (visibly not sent) rather than sitting on a
+    schedule that will never fire.
 - **Analytics**: `GET /brands/:brandId/analytics?days=N` (`src/routes/analytics.ts`) —
   windowed totals + open/click rates, a zero-filled **daily series** for the last N days
   (UTC buckets), all-time **deliverability** (bounce/complaint/unsubscribe), and
@@ -76,6 +93,11 @@ real emails delivered via Amazon SES.
   exactly-once rule skips anyone who already got it. The right inspector
   **collapses/expands** (a floating "Settings" button reopens it). A `--good` success
   color token was added to `globals.css` (used for sent/opened/clicked accents).
+- **Send page → ③ When to send** is now live: **Send now** or **Schedule for later**
+  (date+time + full IANA timezone list, default = the browser's). A scheduled campaign
+  shows a **Scheduled** pill, the chosen time, **Cancel schedule**, and **Update
+  schedule**; the page polls every 15s while scheduled/sending so it updates itself
+  when the send actually goes out. The Campaigns list has a **Scheduled for** column.
 - **Analytics** (`/analytics`, in the sidebar): range chips (7/30/90 days), four stat
   tiles (Emails sent · Open rate · Click rate · Bounce rate), an **Engagement** line
   chart (sent/opened/clicked per day, hover crosshair + tooltip), a **Deliverability**
@@ -122,7 +144,9 @@ Current setup = **personal AWS SES in sandbox** + local dev. That is enough to
 - Build every feature (template editor, scheduling, analytics, approval, RBAC, etc.).
 - Run the whole app locally and test end-to-end.
 - Actually send emails — but **only to verified test recipients**
-  (`omarfaruk19952035@gmail.com`, `shuvon19952035@gmail.com`).
+  (`omarfaruk19952035@gmail.com`, `shuvon19952035@gmail.com`), plus SES's own
+  **simulator** address `success@simulator.amazonses.com`, which sandbox always
+  accepts — handy for testing a real successful send without emailing a person.
 - Contacts, campaigns, type/company filters, open/click tracking, unsubscribe — all testable.
 
 **❌ Needs SES production access + deploy first (the wall):**
@@ -140,9 +164,9 @@ to email **actual customers**. Until then keep building + self-testing on verifi
 ## ▶️ Recommended next steps (in order)
 All buildable + self-testable now with personal credentials (SES production + deploy
 stay LAST, only at real launch — see the "Dev scope" section above).
-0. ~~**Analytics dashboard**~~ ✅ **DONE** (branch `claude/analytics-dashboard`).
-1. **Scheduling** — send a campaign later (pick date/time, timezone).
-2. **Saved segments + working global search** (contact `type`/`company` filters exist;
+0. ~~**Analytics dashboard**~~ ✅ **DONE** · ~~**Scheduling**~~ ✅ **DONE**
+   (branches `claude/analytics-dashboard`, `claude/scheduling`).
+1. **Saved segments + working global search** (contact `type`/`company` filters exist;
    save named segments + wire the sidebar search box).
 3. **Auto-pause (circuit breaker)** — stop sending when bounce/complaint spikes.
    Small, and **mandatory before production**.
