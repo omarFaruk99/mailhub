@@ -1,6 +1,11 @@
 # PROGRESS — where we are
 
-_Last updated: 2026-07-28 · Read this first in a new session._
+_Last updated: 2026-08-15 · Read this first in a new session._
+
+> 📧 **Anything about email, SES, DNS or deliverability → [EMAIL-GUIDE.md](EMAIL-GUIDE.md).**
+> That file holds the click-by-click AWS setup for DevOps, the SPF/DKIM/DMARC
+> explanation, costs, troubleshooting, our full email history, and the
+> WordPress→MailHub cutover checklist. It replaces the old `_TEMP-email-notes.md`.
 
 ## ✅ Phase 1 (MVP) — BUILT & verified (local dev)
 

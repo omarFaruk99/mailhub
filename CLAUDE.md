@@ -11,6 +11,11 @@ new features, and promotions to clients of several separate products/brands
 
 Full plan: **[FINAL-PLAN.md](FINAL-PLAN.md)** — read it before doing design work.
 Beginner glossary (Bangla): **[GLOSSARY.md](GLOSSARY.md)**.
+**Everything about email: [EMAIL-GUIDE.md](EMAIL-GUIDE.md)** — how email actually
+works, SPF/DKIM/DMARC, the full click-by-click AWS SES setup for DevOps, who does
+what, costs, troubleshooting, and our whole email history (WordPress → personal AWS
+→ now) incl. the WordPress→MailHub cutover checklist. **Answer SES/deliverability
+questions from that file, and update it rather than re-explaining in chat.**
 Current build status + how to run: **[PROGRESS.md](PROGRESS.md)** — read this at the
 start of a new session to know exactly what already works and what's next.
 
