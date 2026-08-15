@@ -35,12 +35,14 @@ light/dark). Details, exact "done vs next", and run commands are in **PROGRESS.m
 scheduled send survives a restart). **Auto-pause is now done too** — the last
 Phase 1 guardrail, and the one big tools have that we didn't.
 
-**⚠️ The dev SES access keys have stopped working.** They were provided back in
-Step 5 and delivered real emails; AWS now answers every send with
-`UnrecognizedClientException`, i.e. it no longer recognises the key. **Do not
-confuse this with "SES production access", which is still deliberately LAST** —
-this is just the everyday dev key pair needing to be re-issued in IAM. Feature
-work is not blocked. Details + the fix: PROGRESS.md.
+**⚠️ No email can actually be sent right now — and that is a decision, not a bug.**
+The personal AWS account (dev SES sandbox) was **closed** when its 6-month free
+plan ran out, so every send returns `UnrecognizedClientException`. The owner chose
+**not** to reactivate or replace it: real sending was always going to move to the
+**office AWS account**, and the closed account also held an old EC2 instance whose
+meter would restart on reactivation. So we wait. **Don't offer to "fix the SES
+keys" — replacing them cannot work, the account behind them is gone.** Feature work
+is unaffected; test everything up to the SES call. Full reasoning: PROGRESS.md.
 
 **Dev servers:** after a merge, branch switch, or laptop restart, **restart both dev
 servers** — an orphaned Next.js process serves stale CSS/JS and looks like a bug

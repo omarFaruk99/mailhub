@@ -259,25 +259,30 @@ not moved to a Paid Plan. Every send therefore answers
 invalid". Nothing is wrong with our code; the keys in `backend/.env` are intact
 and the right shape, but the account behind them no longer exists.
 
-**⏰ There is a deadline.** AWS allows reactivation only for a limited period
-(normally ~90 days from closure); after that the closure is permanent and the
-content is deleted. What would be lost:
-- `omarsec.com` domain verification + **DKIM** (the 3 CNAMEs in Cloudflare)
-- the two verified sandbox recipients
-- IAM user `mailhub-dev`
+### Decision (2026-08-15): do nothing — wait for the office AWS account
 
-**Owner task (not urgent, but do not let the window pass):** use the **AWS Support**
-link on that sign-in screen to request reactivation — it will likely ask for a card
-and a Paid Plan. Cost is negligible: SES is ~$0.10 per 1,000 emails, so dev testing
-is effectively $0; the free tier ending does **not** mean a big bill. Reactivating
-is preferred over a fresh account because it keeps the DKIM DNS work that is
-already done. Afterwards only `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in
-`backend/.env` need replacing.
+**We are deliberately letting the personal account go.** Real sending was always
+going to move to the **office AWS account** (us-east-1 + brand domains), so
+rebuilding the practice sandbox would be paid-for, time-consuming work that gets
+thrown away. Reactivating was rejected for a concrete reason: that account also
+held an **EC2 instance** from an older project (since moved to Vercel), and EC2 —
+not SES — is what generated the bills. Bringing the account back risks bringing the
+meter back with it.
 
-Reminder of where this is heading anyway: per the plan, real sending eventually
-moves to the **office AWS account** (us-east-1 + brand domains). The personal
-account is a practice sandbox — so if reactivation turns out to be a hassle, the
-honest answer is to wait for the office account rather than rebuild this one.
+**Consequence, accepted:** the ~90-day reactivation window will lapse, and with it
+the `omarsec.com` domain verification, its **DKIM CNAMEs in Cloudflare**, the two
+verified sandbox recipients, and IAM user `mailhub-dev`. Do not treat their later
+absence as a bug.
+
+**What this costs us:** no real email can be sent until the office account exists —
+so no checking how a template renders in a real Gmail inbox. Everything else is
+still testable, including the send pipeline up to the SES call.
+**What it does not cost us:** nothing else. No feature work depends on SES.
+
+Worth remembering for later, since the fear was reasonable: the cost risk in AWS is
+**servers** (EC2/Lightsail, ~$8–15/month whether used or not), not **SES** (~$0.10
+per 1,000 emails — about $1/month at this project's real volume, and $0 when idle).
+When the office account is set up: SES only, never EC2.
 
 It does not block feature work: auto-pause was verified end-to-end without SES
 (49/49 checks), and everything except the actual SES call can still be tested.
@@ -288,9 +293,7 @@ stay LAST, only at real launch — see the "Dev scope" section above).
 0. ~~**Analytics dashboard**~~ ✅ **DONE** · ~~**Scheduling**~~ ✅ **DONE**
    (PRs #7–#11) · ~~**Auto-pause**~~ ✅ **DONE** (branch `claude/auto-pause`, with
    the `PUBLIC_URL` fix and the click open-redirect fix in the same round).
-1. **Re-issue the dev SES access key** (owner, 5 minutes in IAM) — see the box
-   above; then re-verify one real send. Not the same as production access.
-2. **Saved segments + working global search** (contact `type`/`company` filters exist;
+1. **Saved segments + working global search** (contact `type`/`company` filters exist;
    save named segments + wire the sidebar search box).
 3. **Teams + RBAC roles + approval workflow** (Draft→Review→Approve→Send) — one bigger
    chunk (approval needs roles). **Revisit the category→audience pre-check here.**
