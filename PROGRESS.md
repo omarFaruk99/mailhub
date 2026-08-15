@@ -241,13 +241,29 @@ to email **actual customers**. Until then keep building + self-testing on verifi
   approve, so start a bit before launch. Adds SPF/DMARC + custom MAIL FROM.
 - **#Deploy**: docker-compose (backend+frontend) + nginx + SSL on the company Linux server.
 
-## ⚠️ Blocked right now: the dev AWS SES keys are rejected
-`POST /test-email` to SES returns **`UnrecognizedClientException` — "The security
-token included in the request is invalid"** for every address, including the
-simulator. Nothing can actually be emailed until new keys are created in the
-personal AWS account and put in `backend/.env`
-(`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`). Owner task. It does not block
-feature work — auto-pause was verified end-to-end without SES (49/49 checks).
+## ⚠️ The dev SES keys that were already working have stopped working
+
+**This is NOT the "SES production access" item — that one is still correctly last.**
+Two different things, easy to confuse:
+
+| | What it is | When |
+| --- | --- | --- |
+| **Dev access keys** | The personal-AWS `AKIA…` key pair in `backend/.env`. **Already provided** (Step 5, July) — real emails were delivered with it. | done long ago |
+| **SES production access** | AWS lifting the sandbox so we may email **unverified** people. | **LAST, at real launch** — unchanged |
+
+The keys are still present in `backend/.env` and are the right shape, but AWS now
+answers every send — including the simulator address — with
+**`UnrecognizedClientException` — "The security token included in the request is
+invalid"**. That means AWS no longer recognises the key itself (deactivated,
+deleted, or the IAM user removed), not that anything is wrong with our code.
+
+**Owner task:** in AWS → IAM, check whether that access key still exists and is
+Active. If not, create a new key pair for the same user and replace
+`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in `backend/.env`. Nothing else
+changes — same account, same sandbox, same verified sender.
+
+It does not block feature work: auto-pause was verified end-to-end without SES
+(49/49 checks), and everything except the actual SES call can still be tested.
 
 ## ▶️ Recommended next steps (in order)
 All buildable + self-testable now with personal credentials (SES production + deploy
@@ -255,7 +271,8 @@ stay LAST, only at real launch — see the "Dev scope" section above).
 0. ~~**Analytics dashboard**~~ ✅ **DONE** · ~~**Scheduling**~~ ✅ **DONE**
    (PRs #7–#11) · ~~**Auto-pause**~~ ✅ **DONE** (branch `claude/auto-pause`, with
    the `PUBLIC_URL` fix and the click open-redirect fix in the same round).
-1. **New SES keys** (owner) — see the blocker above; then re-verify a real send.
+1. **Re-issue the dev SES access key** (owner, 5 minutes in IAM) — see the box
+   above; then re-verify one real send. Not the same as production access.
 2. **Saved segments + working global search** (contact `type`/`company` filters exist;
    save named segments + wire the sidebar search box).
 3. **Teams + RBAC roles + approval workflow** (Draft→Review→Approve→Send) — one bigger
