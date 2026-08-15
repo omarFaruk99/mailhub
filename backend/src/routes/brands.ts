@@ -183,9 +183,9 @@ router.put("/contacts/:id", async (req, res) => {
       if (suppressed) {
         return res.status(409).json({
           error:
-            `This contact is on the blocked list (${suppressed.reason}). You cannot change their ` +
-            `email address, because a new address would start sending to them again. ` +
-            `If the address is wrong, delete this contact and add a new one.`,
+            `This contact will not receive emails (${suppressed.reason}). We block emails by ` +
+            `address, not by person, so the address cannot be changed — a new address would not ` +
+            `be blocked. If the address is wrong, delete this contact and add the correct one.`,
         });
       }
       data.email = email;

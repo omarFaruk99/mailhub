@@ -46,6 +46,41 @@ const typeLabel = (v: unknown) => TYPES.find((t) => t.value === v)?.label ?? Str
 // so switching to a dropdown never hides or rewrites existing data.
 const COMMON_PLANS = ["Free", "Trial", "Paid"];
 
+/**
+ * Merge the standard options with the values already in the data, treating
+ * spellings that differ only by case as one option.
+ *
+ * Without this the list showed "Paid" AND "paid" — the two spellings already
+ * sitting in the database, which is the very problem a dropdown is here to end.
+ * `preferred` comes first, so the standard spelling is the one that survives.
+ */
+function mergeOptions(preferred: string[], existing: (string | null | undefined)[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of [...preferred, ...existing]) {
+    const value = raw?.trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+/**
+ * The option this stored value means, in the list's own spelling.
+ *
+ * A contact saved as "paid" shows as "Paid" and is stored that way the next time
+ * anyone saves them — so the old spellings clean themselves up through normal use
+ * instead of needing a migration.
+ */
+function canonical(value: string | null | undefined, options: string[]): string {
+  const v = value?.trim();
+  if (!v) return "";
+  return options.find((o) => o.toLowerCase() === v.toLowerCase()) ?? v;
+}
+
 // Why someone is blocked, in words the reader does not have to decode.
 const BLOCK_REASON: Record<string, string> = {
   unsubscribe: "they unsubscribed",
@@ -95,8 +130,8 @@ export default function ContactsPage() {
   // Dropdown options: the usual values plus anything this brand already uses, so a
   // country or plan typed before this screen existed stays selectable.
   const rows = contacts.data ?? [];
-  const planOptions = [...new Set([...COMMON_PLANS, ...rows.map((c) => c.plan).filter(Boolean) as string[]])];
-  const countryOptions = [...new Set([...countryNames(), ...rows.map((c) => c.country).filter(Boolean) as string[]])]
+  const planOptions = mergeOptions(COMMON_PLANS, rows.map((c) => c.plan));
+  const countryOptions = mergeOptions(countryNames(), rows.map((c) => c.country))
     .sort((a, b) => a.localeCompare(b));
 
   function openEdit(c: Contact) {
@@ -104,8 +139,9 @@ export default function ContactsPage() {
     setEditForm({
       email: c.email,
       name: c.name ?? "",
-      plan: c.plan ?? "",
-      country: c.country ?? "",
+      // Shown in the list's spelling, so saving quietly fixes an old "paid".
+      plan: canonical(c.plan, planOptions),
+      country: canonical(c.country, countryOptions),
       type: c.type,
       company: c.company ?? "",
     });
@@ -291,9 +327,15 @@ export default function ContactsPage() {
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit contact</DialogTitle>
+            <div className="flex items-center gap-2.5">
+              <DialogTitle>Edit contact</DialogTitle>
+              {/* The record's state belongs next to its name, not in a form field:
+                  it is not something you fill in. */}
+              {editing && <StatusBadge status={editing.status} />}
+            </div>
             <DialogDescription>
-              Status updates on its own, so you cannot change it here.
+              Status changes on its own — when someone unsubscribes, or an email
+              cannot be delivered. You cannot set it here.
             </DialogDescription>
           </DialogHeader>
           {editing && (
@@ -302,9 +344,15 @@ export default function ContactsPage() {
                 <Callout tone="warn" icon={<Lock className="size-4" />}>
                   {blockKnown ? (
                     <>
-                      This contact will not receive emails ({BLOCK_REASON[blockedBy.get(editing.email) ?? ""] ?? "they are blocked"}).
-                      Their email address is locked, because a new address would start sending to them again.
-                      If the address is wrong, delete this contact and add a new one.
+                      <strong>
+                        This contact will not receive emails ({BLOCK_REASON[blockedBy.get(editing.email) ?? ""] ?? "they are blocked"}).
+                      </strong>
+                      <br />
+                      We block emails by address, not by person. So the email address cannot be
+                      changed here — a new address would not be blocked, and emails would start
+                      going to them again.
+                      <br />
+                      Is the address wrong? Delete this contact, then add the correct address.
                     </>
                   ) : suppressions.isError ? (
                     // Without a retry this stays locked forever on a temporary
@@ -324,7 +372,6 @@ export default function ContactsPage() {
                 planOptions={planOptions}
                 countryOptions={countryOptions}
                 emailDisabled={emailLocked(editing.email)}
-                status={editing.status}
               />
             </>
           )}
@@ -347,18 +394,20 @@ export default function ContactsPage() {
  * narrow column that pushed the buttons off small laptop screens.
  */
 function ContactFields({
-  form, setForm, planOptions, countryOptions, emailDisabled, status,
+  form, setForm, planOptions, countryOptions, emailDisabled,
 }: {
   form: ContactForm;
   setForm: (f: ContactForm) => void;
   planOptions: string[];
   countryOptions: string[];
   emailDisabled?: boolean;
-  status?: string;
 }) {
+  // Three even rows, paired by what each field answers: who they are, how we group
+  // them, what we know about them. (Status is not here — it is a badge next to the
+  // dialog title, which is where a record's state belongs and keeps the rows even.)
   return (
     <div className="grid gap-x-4 gap-y-4 py-1 sm:grid-cols-2">
-      <Field label="Email address" required className={status ? undefined : "sm:col-span-2"}>
+      <Field label="Email address" required>
         <Input
           type="email"
           value={form.email}
@@ -367,16 +416,6 @@ function ContactFields({
           disabled={emailDisabled}
         />
       </Field>
-
-      {/* Read-only, and only when editing: it answers "why can I not change this?"
-          right where the question comes up. */}
-      {status && (
-        <Field label="Status" hint="Set by what the contact did">
-          <div className="flex h-9 items-center">
-            <StatusBadge status={status} />
-          </div>
-        </Field>
-      )}
 
       <Field label="Full name">
         <Input
