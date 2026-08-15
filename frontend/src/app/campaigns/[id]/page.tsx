@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -19,10 +19,11 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import { Tag } from "@/components/ui/tag";
+import { Callout } from "@/components/callout";
 import { cn } from "@/lib/utils";
 import {
   Send, Monitor, Smartphone, ChevronRight, ChevronDown, PanelRightClose, Settings2, Check, X, Search,
-  Users, Mail, Maximize2, Minimize2, ZoomIn, Clock, CalendarClock, AlertTriangle, PauseCircle,
+  Users, Mail, Maximize2, Minimize2, ZoomIn, Clock, CalendarClock, AlertTriangle, PauseCircle, Pencil,
 } from "lucide-react";
 
 // Which contact types are pre-checked for a category (user can change).
@@ -133,6 +134,7 @@ function CampaignSend() {
   const { brand } = useBrand();
   const brandId = brand?.id;
   const qc = useQueryClient();
+  const router = useRouter();
 
   // ---- data ----
   const campaigns = useQuery({
@@ -463,6 +465,17 @@ function CampaignSend() {
           }
         />
         <div className="flex-1" />
+        {/* Editing is only refused outright while a send is running. Whether the
+            CONTENT can change is decided on the edit page, which knows how many
+            people already have the email. */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push(`/campaigns/${id}/edit`)}
+          disabled={isSending}
+        >
+          <Pencil className="size-4" /> Edit
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setTestOpen(true)}>
           Send test
         </Button>
@@ -484,21 +497,9 @@ function CampaignSend() {
           with nobody on screen — without this the campaign would just be back to
           "Draft" with no explanation anywhere the sender looks. */}
       {campaign?.lastError && !isSending && (
-        <div
-          className="flex items-start gap-2.5 border-b px-5 py-2.5 text-[13px]"
-          style={{
-            background: "color-mix(in oklch, var(--warn) 10%, transparent)",
-            borderBottomColor: "color-mix(in oklch, var(--warn) 35%, transparent)",
-          }}
-        >
-          <AlertTriangle className="mt-0.5 size-4 flex-none" style={{ color: "var(--warn)" }} />
-          <span className="min-w-0">
-            <span className="font-semibold" style={{ color: "var(--warn)" }}>
-              Last attempt did not finish.{" "}
-            </span>
-            <span className="text-foreground/80">{campaign.lastError}</span>
-          </span>
-        </div>
+        <Callout tone="warn" icon={<AlertTriangle className="size-4" />} className="rounded-none border-x-0 border-t-0 px-5">
+          <strong>Last attempt did not finish.</strong> {campaign.lastError}
+        </Callout>
       )}
       {brandPaused && (
         <div className="flex items-center gap-2.5 border-b px-5 py-2.5 text-[13px] text-muted-foreground">

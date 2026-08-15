@@ -1,6 +1,6 @@
 # PROGRESS — where we are
 
-_Last updated: 2026-08-15 · Read this first in a new session._
+_Last updated: 2026-08-16 · Read this first in a new session._
 
 > 📧 **Anything about email, SES, DNS or deliverability → [EMAIL-GUIDE.md](EMAIL-GUIDE.md).**
 > That file holds the click-by-click AWS setup for DevOps, the SPF/DKIM/DMARC
@@ -14,13 +14,42 @@ real emails delivered via Amazon SES.
 
 ### Backend — `backend/` (Express + TypeScript + Prisma 7 + PostgreSQL)
 - **Brands**: create, list.
-- **Contacts**: add, list, **CSV import** (Papa Parse). Rule enforced: one email = one
-  contact per brand (unique `[brandId, email]`). Each contact has a **`type`**
-  (`client` | `prospect` | `internal`) and optional **`company`** (external company
-  name, for filtering; blank for internal/individuals).
-- **Campaigns**: create (draft), list, **send/broadcast** with filter
-  (plan/country/**company**/**contact type**), **exactly-once**
+- **Contacts**: add, list, **edit**, **delete**, **CSV import** (Papa Parse). Rule
+  enforced: one email = one contact per brand (unique `[brandId, email]`). Each
+  contact has a **`type`** (`client` | `prospect` | `internal`) and optional
+  **`company`** (external company name, for filtering; blank for internal/individuals).
+  - **`status` is not editable** (`PUT /contacts/:id` ignores it). It records what
+    the PERSON did — unsubscribed, bounced, complained — and typing over it would
+    re-enrol someone who asked to be left alone.
+  - **A suppressed contact's email cannot be changed.** Suppression is keyed by
+    address, so a rename hands them a fresh, unsuppressed identity. The UI locks the
+    field and says why; fixing a genuine typo means delete + add.
+  - **`DELETE /contacts/:id`** removes their `CampaignRecipient` history but **never
+    their Suppression row** — that row is what stops a later CSV import from quietly
+    re-adding an unsubscribed person. Refused while any campaign of the brand is
+    `sending` (plus a `P2003` catch for the race).
+- **Campaigns**: create (draft), list, **edit**, **delete**, **send/broadcast** with
+  filter (plan/country/**company**/**contact type**), **exactly-once**
   (unique `[campaignId, contactId]`), recipients list.
+  - **What may be edited is decided by whether the email REACHED anyone, not by
+    `status`** — the two differ in both directions. A `sent` campaign whose every
+    attempt failed reached nobody and stays fully editable; a campaign auto-pause
+    stopped halfway is back to `draft` while holding hundreds of send records. Rows
+    still at `sending` count as delivered (the row is written *before* the SES call,
+    so the message may well have gone out).
+    Once anyone has it, subject/html/category are frozen — their copy cannot be
+    recalled, and `/track/click` validates against the stored HTML. **The name stays
+    editable** (internal label, never sent). Use **Duplicate** for a new version.
+  - **Category cannot change while `scheduled`**: the audience was frozen for the old
+    category, so relabelling "Product updates" → "Marketing/Offers" would send
+    marketing to internal staff. Cancel the schedule first.
+  - **`DELETE /campaigns/:id`** removes the campaign *and* its recipient rows — which
+    are the analytics *and* the auto-pause denominator, so both change. Allowed on
+    purpose (clearing test campaigns is a real need); the confirm dialog says what is
+    lost. Recipient rows and campaign go in **one transaction with the campaign row
+    last** under the same `status != "sending"` guard, so a send claiming it mid-delete
+    rolls everything back rather than destroying the exactly-once records. The queued
+    job is cancelled **after** the transaction commits.
   - **Audience by type:** send accepts `includeTypes` (which contact types receive it).
     Category defaults: **Marketing/Offers → client+prospect**; **Product updates → all
     (client+prospect+internal)**; **Tips / Transactional → client** (user can adjust via
@@ -31,12 +60,20 @@ real emails delivered via Amazon SES.
 - **Webhook** `/webhooks/ses` (SNS): bounce/complaint → auto-suppress; SNS signature
   verify (`sns-validator`); dev bypass env `SNS_SKIP_VERIFY=true`.
 - **Tracking**: open pixel `/track/open`, click redirect `/track/click` → sets
-  `openedAt` / `clickedAt`. The click route only redirects to a link that actually
-  appears in the email **this recipient** was sent (campaign HTML with their merge
-  tags filled in, via the shared `personalizeHtml`/`linksIn` in `send-campaign.ts`).
+  `openedAt` / `clickedAt`. The click route only redirects to a link that appears in
+  the campaign this recipient was sent (`isCampaignLink` in `send-campaign.ts`).
   Without that it was an **open redirect** — anyone could point our domain at a
   phishing page, which is how a sending domain's reputation gets destroyed by
   someone who never touched the account.
+  - Matched against the **stored** HTML with merge tags as wildcards, *not* against
+    one recipient's personalized copy: doing the latter tied every past link to the
+    contact's name as it is NOW, so renaming someone killed the links already in
+    their inbox.
+  - The security boundary is the **origin**, checked exactly. The wildcard excludes
+    `?` and `#` (no query string can be bolted on) but allows spaces and slashes —
+    real names contain them, and rejecting whitespace broke personalized links for
+    anyone called "John Smith". Control characters are refused (CRLF would otherwise
+    make `res.redirect` throw a 500).
 - **`PUBLIC_URL`** (new env) is the address the backend is reachable at from the
   outside. Every unsubscribe link, open pixel and tracked link points there, and
   they are opened days later from someone else's inbox — on the server this MUST be
@@ -116,8 +153,8 @@ real emails delivered via Amazon SES.
   `src/email/ses.ts`, `src/prisma.ts`, `prisma/schema.prisma`, `prisma.config.ts`.
 
 ### Frontend — `frontend/` (Next.js 16 + shadcn/ui + Tailwind v4 + TanStack Query)
-- Screens: **Dashboard**, **Contacts** (add + CSV import; **type dropdown + company
-  field**, type filter chips, type badge), **Templates** (list with **Starter/Yours**
+- Screens: **Dashboard**, **Contacts** (add + **edit** + **delete** + CSV import;
+  type filter chips, type badge; row **⋯ menu**), **Templates** (list with **Starter/Yours**
   badge + a **⋯ actions menu** (Edit/Duplicate/Delete); editor is a full **page**
   `/templates/new` & `/templates/[id]` — HTML box + **live iframe preview** + "start from
   a ready-made design"), **Campaigns** (create is a full **page** `/campaigns/new`;
@@ -164,6 +201,29 @@ real emails delivered via Amazon SES.
   All colors/fonts are tokens in `src/app/globals.css` (change once → whole app).
 - Talks to backend via `src/lib/api.ts` (`NEXT_PUBLIC_API_URL`). Single brand for now
   (`src/lib/use-brand.ts` uses the first brand).
+
+### Contact dialog + shared form controls (read before touching contact forms)
+- **Add and Edit share one `ContactFields` component**, so they cannot drift apart.
+  Three even rows, paired by what each answers: **Email | Full name** (who),
+  **Type | Company** (how we group), **Plan | Country** (what we know). `Status` is a
+  read-only badge **next to the dialog title** — it is not something you fill in, and
+  in the grid it made the rows uneven.
+- **Plan and Country are pickers, not free text** (`components/ui/combobox.tsx`).
+  This is a correctness fix: send filters match **exactly**, and the data already
+  held both `Paid` and `paid`, so a contact typed one way silently dropped out of a
+  send filtered the other way. `USA`/`United States` is the same trap.
+  - Options = the standard list **plus whatever the brand already uses**, merged
+    **case-insensitively** with the standard spelling winning — otherwise the
+    dropdown helpfully offered both `Paid` and `paid`, i.e. the original problem.
+  - A contact stored as `paid` displays as `Paid`, so saving normalises it. The old
+    spellings clean up through ordinary use; no migration.
+  - Country names come from **`Intl.DisplayNames`** over a short ISO-3166 code list
+    (`lib/countries.ts`) — no package, no hardcoded name table. Same approach as the
+    timezone picker.
+- The `Combobox` stops Escape propagating while its list is open, so dismissing the
+  list does not also close the dialog and discard the edits. (Base UI's `Select`
+  already handles this itself — verified, first Escape closes the list, second
+  closes the dialog.)
 
 ### DB schema (Prisma models)
 Brand (now with the auto-pause fields `sendingPaused` / `pausedAt` / `pauseReason` /
@@ -295,9 +355,10 @@ It does not block feature work: auto-pause was verified end-to-end without SES
 ## ▶️ Recommended next steps (in order)
 All buildable + self-testable now with personal credentials (SES production + deploy
 stay LAST, only at real launch — see the "Dev scope" section above).
-0. ~~**Analytics dashboard**~~ ✅ **DONE** · ~~**Scheduling**~~ ✅ **DONE**
-   (PRs #7–#11) · ~~**Auto-pause**~~ ✅ **DONE** (branch `claude/auto-pause`, with
-   the `PUBLIC_URL` fix and the click open-redirect fix in the same round).
+0. ~~**Analytics dashboard**~~ ✅ · ~~**Scheduling**~~ ✅ (PRs #7–#11) ·
+   ~~**Auto-pause**~~ ✅ (PR #13, with the `PUBLIC_URL` fix and the click
+   open-redirect fix) · ~~**Campaign + contact edit/delete**~~ ✅ (PR #14, with the
+   contact-dialog redesign and the plan/country pickers).
 1. **Saved segments + working global search** (contact `type`/`company` filters exist;
    save named segments + wire the sidebar search box).
 3. **Teams + RBAC roles + approval workflow** (Draft→Review→Approve→Send) — one bigger

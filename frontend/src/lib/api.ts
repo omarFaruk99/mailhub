@@ -191,6 +191,14 @@ export const api = {
     req<{ email: string; reason: string }[]>(`/brands/${brandId}/suppressions`),
   addContact: (brandId: string, c: Partial<Contact>) =>
     req<Contact>(`/brands/${brandId}/contacts`, { method: "POST", body: JSON.stringify(c) }),
+  // `status` is not editable on purpose — it records what the PERSON did
+  // (unsubscribed / bounced / complained) and must not be typed over.
+  updateContact: (id: string, c: Partial<Omit<Contact, "id" | "status" | "createdAt">>) =>
+    req<Contact>(`/contacts/${id}`, { method: "PUT", body: JSON.stringify(c) }),
+  deleteContact: (id: string) =>
+    req<{ ok: boolean; historyDeleted: number; stillSuppressed: boolean }>(`/contacts/${id}`, {
+      method: "DELETE",
+    }),
   importCsv: async (brandId: string, file: File) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -208,6 +216,13 @@ export const api = {
   campaigns: (brandId: string) => req<Campaign[]>(`/brands/${brandId}/campaigns`),
   createCampaign: (brandId: string, c: Omit<Campaign, "id" | "status" | "createdAt">) =>
     req<Campaign>(`/brands/${brandId}/campaigns`, { method: "POST", body: JSON.stringify(c) }),
+  // Subject/content/category can only change while the email has reached nobody —
+  // the backend decides, and answers 409 with the delivered count if it has.
+  // The name is always editable (it is our internal label, never sent).
+  updateCampaign: (id: string, c: Partial<Pick<Campaign, "name" | "category" | "subject" | "html">>) =>
+    req<Campaign>(`/campaigns/${id}`, { method: "PUT", body: JSON.stringify(c) }),
+  deleteCampaign: (id: string) =>
+    req<{ ok: boolean; recipientsDeleted: number }>(`/campaigns/${id}`, { method: "DELETE" }),
   sendCampaign: (id: string, filter: SendFilter) =>
     req<{
       matched: number;

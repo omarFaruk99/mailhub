@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Send, LayoutTemplate, Mail, Search, Moon, ChevronsUpDown, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Users, Send, LayoutTemplate, Search, Moon, ChevronsUpDown, BarChart3 } from "lucide-react";
 import { useBrand } from "@/lib/use-brand";
 import { SendingPausedBanner } from "@/components/sending-paused-banner";
 import { cn } from "@/lib/utils";
