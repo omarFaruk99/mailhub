@@ -1,6 +1,11 @@
 # PROGRESS — where we are
 
-_Last updated: 2026-07-28 · Read this first in a new session._
+_Last updated: 2026-08-15 · Read this first in a new session._
+
+> 📧 **Anything about email, SES, DNS or deliverability → [EMAIL-GUIDE.md](EMAIL-GUIDE.md).**
+> That file holds the click-by-click AWS setup for DevOps, the SPF/DKIM/DMARC
+> explanation, costs, troubleshooting, our full email history, and the
+> WordPress→MailHub cutover checklist. It replaces the old `_TEMP-email-notes.md`.
 
 ## ✅ Phase 1 (MVP) — BUILT & verified (local dev)
 
@@ -26,7 +31,17 @@ real emails delivered via Amazon SES.
 - **Webhook** `/webhooks/ses` (SNS): bounce/complaint → auto-suppress; SNS signature
   verify (`sns-validator`); dev bypass env `SNS_SKIP_VERIFY=true`.
 - **Tracking**: open pixel `/track/open`, click redirect `/track/click` → sets
-  `openedAt` / `clickedAt`.
+  `openedAt` / `clickedAt`. The click route only redirects to a link that actually
+  appears in the email **this recipient** was sent (campaign HTML with their merge
+  tags filled in, via the shared `personalizeHtml`/`linksIn` in `send-campaign.ts`).
+  Without that it was an **open redirect** — anyone could point our domain at a
+  phishing page, which is how a sending domain's reputation gets destroyed by
+  someone who never touched the account.
+- **`PUBLIC_URL`** (new env) is the address the backend is reachable at from the
+  outside. Every unsubscribe link, open pixel and tracked link points there, and
+  they are opened days later from someone else's inbox — on the server this MUST be
+  the real public URL. It used to be hardcoded to `localhost:4000`, which would have
+  shipped broken links to real customers. Unset in dev → falls back to localhost.
 - **Templates**: CRUD (`src/routes/templates.ts`) for saved email designs
   (`Template` model = name, subject, `category`, `html`, `isStarter`). Approach is
   **template + HTML** (everyone edits HTML directly; no fill-in-fields/drag-drop yet).
@@ -58,6 +73,30 @@ real emails delivered via Amazon SES.
   - Known gap: no "Retry failed" for a send that gave up — after the last retry the
     campaign goes back to **draft** (visibly not sent) rather than sitting on a
     schedule that will never fire.
+- **Auto-pause (circuit breaker)** — `src/email/auto-pause.ts`. Sending stops for a
+  **brand** when bounce/complaint rates spike; only a person can resume it.
+  - Checked in four places: before `/send` (423), before the scheduled worker runs,
+    at the top of `sendCampaign`, and **every 25 emails inside the send loop** — a
+    bounce webhook can trip the breaker halfway through a 700-person send, which is
+    the case it exists for. The webhook itself re-checks the moment SES reports a
+    bounce/complaint.
+  - **Emergency levels, looser than the Analytics targets on purpose:** bounce 5%,
+    complaint **0.3%** (where Gmail/Yahoo actually penalise). At the 0.1% *target*
+    one complaint in an 800-person send is 0.125% and would halt the company.
+    Two floors stop small numbers looking like disasters: `minSent` 50 and
+    `minEvents` 2. All tunable via `AUTOPAUSE_*` env (see `.env.example`).
+  - **Both sides of the rate use the same window AND the same population:** an event
+    only counts if that address was mailed *within the window*. Sends are stamped
+    when they go out, bounces when SES reports them (days later) — without this, an
+    old send's bounces divided by a small recent denominator read as 40%+.
+  - `Suppression.lastEventAt` (new) is when the reason was last set — `createdAt`
+    can't answer that (unsubscribed in March, bounced in July keeps March).
+  - `Campaign.lastError` (new) records why an attempt did not finish, because the
+    worker runs with nobody on screen. Cleared by `/send`, `/schedule`, `/unschedule`.
+  - A send stopped mid-way goes back to **draft**, not "sent" — "sent" would claim it
+    finished and would block scheduling the people who were missed.
+  - API: `GET /brands/:id/sending-status` · `POST /brands/:id/resume-sending`
+    (`{force:true}` overrides a still-breached threshold) · `POST /brands/:id/pause-sending`.
 - **Analytics**: `GET /brands/:brandId/analytics?days=N` (`src/routes/analytics.ts`) —
   windowed totals + open/click rates, a zero-filled **daily series** for the last N days
   (UTC buckets), all-time **deliverability** (bounce/complaint/unsubscribe), and
@@ -127,8 +166,10 @@ real emails delivered via Amazon SES.
   (`src/lib/use-brand.ts` uses the first brand).
 
 ### DB schema (Prisma models)
-Brand, Contact (now with `type` + `company`), Campaign (now with the scheduling
-fields), CampaignRecipient, Suppression, Template.
+Brand (now with the auto-pause fields `sendingPaused` / `pausedAt` / `pauseReason` /
+`pausedBy`), Contact (now with `type` + `company`), Campaign (now with the scheduling
+fields + `lastError`), CampaignRecipient, Suppression (now with `lastEventAt`),
+Template.
 (Migrations in `backend/prisma/migrations/`.)
 
 ### Defaults the system applies (know these before changing behaviour)
@@ -205,15 +246,59 @@ to email **actual customers**. Until then keep building + self-testing on verifi
   approve, so start a bit before launch. Adds SPF/DMARC + custom MAIL FROM.
 - **#Deploy**: docker-compose (backend+frontend) + nginx + SSL on the company Linux server.
 
+## ⚠️ The dev SES keys that were already working have stopped working
+
+**This is NOT the "SES production access" item — that one is still correctly last.**
+Two different things, easy to confuse:
+
+| | What it is | When |
+| --- | --- | --- |
+| **Dev access keys** | The personal-AWS `AKIA…` key pair in `backend/.env`. **Already provided** (Step 5, July) — real emails were delivered with it. | done long ago |
+| **SES production access** | AWS lifting the sandbox so we may email **unverified** people. | **LAST, at real launch** — unchanged |
+
+**Cause confirmed (2026-08-15): the personal AWS account is CLOSED.** Signing in
+shows "Your account is closed… If you do not reactivate your account, your account
+will be permanently closed." The 6-month AWS Free Plan ran out and the account was
+not moved to a Paid Plan. Every send therefore answers
+`UnrecognizedClientException` — "The security token included in the request is
+invalid". Nothing is wrong with our code; the keys in `backend/.env` are intact
+and the right shape, but the account behind them no longer exists.
+
+### Decision (2026-08-15): do nothing — wait for the office AWS account
+
+**We are deliberately letting the personal account go.** Real sending was always
+going to move to the **office AWS account** (us-east-1 + brand domains), so
+rebuilding the practice sandbox would be paid-for, time-consuming work that gets
+thrown away. Reactivating was rejected for a concrete reason: that account also
+held an **EC2 instance** from an older project (since moved to Vercel), and EC2 —
+not SES — is what generated the bills. Bringing the account back risks bringing the
+meter back with it.
+
+**Consequence, accepted:** the ~90-day reactivation window will lapse, and with it
+the `omarsec.com` domain verification, its **DKIM CNAMEs in Cloudflare**, the two
+verified sandbox recipients, and IAM user `mailhub-dev`. Do not treat their later
+absence as a bug.
+
+**What this costs us:** no real email can be sent until the office account exists —
+so no checking how a template renders in a real Gmail inbox. Everything else is
+still testable, including the send pipeline up to the SES call.
+**What it does not cost us:** nothing else. No feature work depends on SES.
+
+Worth remembering for later, since the fear was reasonable: the cost risk in AWS is
+**servers** (EC2/Lightsail, ~$8–15/month whether used or not), not **SES** (~$0.10
+per 1,000 emails — about $1/month at this project's real volume, and $0 when idle).
+When the office account is set up: SES only, never EC2.
+
+It does not block feature work: auto-pause was verified end-to-end without SES
+(49/49 checks), and everything except the actual SES call can still be tested.
+
 ## ▶️ Recommended next steps (in order)
 All buildable + self-testable now with personal credentials (SES production + deploy
 stay LAST, only at real launch — see the "Dev scope" section above).
 0. ~~**Analytics dashboard**~~ ✅ **DONE** · ~~**Scheduling**~~ ✅ **DONE**
-   (PRs #7–#11; branches `claude/analytics-dashboard`, `claude/scheduling*`).
-1. **Auto-pause (circuit breaker)** — stop sending when bounce/complaint spikes.
-   Small, and **mandatory before production**. It is the one guardrail big tools
-   have that we don't, and the no-consent-gate decision makes it load-bearing.
-2. **Saved segments + working global search** (contact `type`/`company` filters exist;
+   (PRs #7–#11) · ~~**Auto-pause**~~ ✅ **DONE** (branch `claude/auto-pause`, with
+   the `PUBLIC_URL` fix and the click open-redirect fix in the same round).
+1. **Saved segments + working global search** (contact `type`/`company` filters exist;
    save named segments + wire the sidebar search box).
 3. **Teams + RBAC roles + approval workflow** (Draft→Review→Approve→Send) — one bigger
    chunk (approval needs roles). **Revisit the category→audience pre-check here.**

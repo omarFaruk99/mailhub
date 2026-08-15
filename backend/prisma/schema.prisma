@@ -17,6 +17,16 @@ model Brand {
   domain    String    @unique
   createdAt DateTime  @default(now())
 
+  // --- Auto-pause (circuit breaker) ---
+  // When bounce/complaint rates spike, sending for this brand stops until a human
+  // resumes it. Per brand, because reputation is per brand (one brand's problem
+  // must never stop another's sends).
+  sendingPaused Boolean   @default(false)
+  pausedAt      DateTime?
+  pauseReason   String? // human-readable, e.g. "Bounce rate 7.2% (limit 5%)"
+  // Who/what paused it: "auto" (thresholds) or "manual" (a person).
+  pausedBy      String?
+
   contacts     Contact[]
   campaigns    Campaign[]
   suppressions Suppression[]
@@ -85,6 +95,11 @@ model Campaign {
   sendOptions Json?
   jobId       String?
 
+  // Why the last send attempt did not finish (auto-pause, or a crash that used up
+  // its retries). Cleared when a send succeeds. Without it, a scheduled send that
+  // was blocked would silently drop back to draft with the reason only in a log.
+  lastError String?
+
   brandId   String
   brand     Brand    @relation(fields: [brandId], references: [id])
 
@@ -116,6 +131,12 @@ model Suppression {
   email     String
   reason    String   // unsubscribe | bounce | complaint
   createdAt DateTime @default(now())
+  // When `reason` was last SET (first suppression, or an escalation such as
+  // bounce → complaint). createdAt cannot answer that: an address unsubscribed in
+  // March and bounced in July keeps its March createdAt, so a rolling bounce rate
+  // read from createdAt would miss the July bounce entirely. Auto-pause windows
+  // on this field.
+  lastEventAt DateTime @default(now())
 
   brandId   String
   brand     Brand    @relation(fields: [brandId], references: [id])

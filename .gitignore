@@ -1,6 +1,10 @@
-# Secrets — NEVER commit
+# Secrets — NEVER commit.
+# Every .env variant, not just the two we happen to use today: a backup made
+# while debugging (".env.backup", ".env.old") holds the same live AWS keys, and
+# one `git add -A` would publish them. .env.example is the only one allowed.
 .env
-.env.local
+.env.*
+!.env.example
 *.pem
 
 # Dependencies

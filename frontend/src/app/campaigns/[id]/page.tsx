@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ContactType } from "@/lib/api";
 import { useBrand } from "@/lib/use-brand";
+import { sendingStatusKey, useSendingStatus } from "@/lib/use-sending-status";
 import type { Campaign, Contact, Recipient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +22,7 @@ import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 import {
   Send, Monitor, Smartphone, ChevronRight, ChevronDown, PanelRightClose, Settings2, Check, X, Search,
-  Users, Mail, Maximize2, Minimize2, ZoomIn, Clock, CalendarClock,
+  Users, Mail, Maximize2, Minimize2, ZoomIn, Clock, CalendarClock, AlertTriangle, PauseCircle,
 } from "lucide-react";
 
 // Which contact types are pre-checked for a category (user can change).
@@ -146,6 +147,10 @@ function CampaignSend() {
     },
   });
   const campaign = campaigns.data?.find((c) => c.id === id);
+  // Auto-pause. A paused brand cannot send anything, so this page has to know —
+  // the app-wide banner explains it, and here it disables the button.
+  const sendingStatus = useSendingStatus();
+  const brandPaused = !!sendingStatus.data?.paused;
   const contacts = useQuery({ queryKey: ["contacts", brandId], queryFn: () => api.contacts(brandId!), enabled: !!brandId });
   const suppressions = useQuery({ queryKey: ["suppressions", brandId], queryFn: () => api.suppressions(brandId!), enabled: !!brandId });
   const recipients = useQuery({
@@ -271,9 +276,17 @@ function CampaignSend() {
   const sendMut = useMutation({
     mutationFn: () => api.sendCampaign(id, filterBody),
     onSuccess: (r) => {
-      toast.success(`Sent ${r.sent} · skipped ${r.skippedSuppressed + r.skippedAlready} · failed ${r.failed}`);
+      // A send stopped by auto-pause still returns 200 (some emails did go out),
+      // so a plain success toast would hide the important half of the news.
+      if (r.stoppedReason) {
+        toast.warning(`Stopped after ${r.sent} emails — ${r.stoppedReason}`, { duration: 12_000 });
+      } else {
+        toast.success(`Sent ${r.sent} · skipped ${r.skippedSuppressed + r.skippedAlready} · failed ${r.failed}`);
+      }
       qc.invalidateQueries({ queryKey: ["recipients", id] });
       qc.invalidateQueries({ queryKey: ["campaigns", brandId] });
+      // The send itself can trip the breaker, so re-read the banner's data.
+      qc.invalidateQueries({ queryKey: sendingStatusKey(brandId) });
       setViewOverride("recipients"); // jump to the results once the send finishes
     },
     onError: (e: Error) => toast.error("Send failed: " + e.message),
@@ -340,6 +353,9 @@ function CampaignSend() {
     !!campaign &&
     !busy &&
     !isSending &&
+    // Scheduling is blocked too: the worker would refuse at the scheduled moment
+    // and drop the campaign back to draft, which is a worse way to find out.
+    !brandPaused &&
     (whenMode === "later"
       ? total > 0 && scheduleLooksValid && canSchedule
       : isSent
@@ -422,7 +438,11 @@ function CampaignSend() {
           : `Send to ${total} →`;
 
   return (
-    <div className="flex min-w-0 flex-col" style={{ height: "100vh" }}>
+    // flex-1 + min-h-0, not height:100vh — the app shell can now put a bar above
+    // this page (auto-pause), and a hard 100vh would push the send layout off the
+    // bottom of the screen. Filling the space left over is the same height when
+    // there is no bar, and correct when there is.
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* ===== Top action bar ===== */}
       <div className="flex items-center gap-2.5 border-b px-5 py-3">
         <div className="flex min-w-0 items-center gap-2 text-sm">
@@ -450,12 +470,42 @@ function CampaignSend() {
           size="sm"
           onClick={() => setConfirmOpen(true)}
           disabled={!canSend}
+          // A disabled button with no explanation reads as a bug. The banner above
+          // gives the full reason; this says which button it disabled and why.
+          title={brandPaused ? "Sending is paused for this brand — resume it first" : undefined}
           style={{ background: "var(--sidebar-primary)", color: "white" }}
         >
           {whenMode === "later" ? <CalendarClock className="size-4" /> : <Send className="size-4" />}
           {sendLabel}
         </Button>
       </div>
+
+      {/* Why the last attempt did not finish. Set by the send worker, which runs
+          with nobody on screen — without this the campaign would just be back to
+          "Draft" with no explanation anywhere the sender looks. */}
+      {campaign?.lastError && !isSending && (
+        <div
+          className="flex items-start gap-2.5 border-b px-5 py-2.5 text-[13px]"
+          style={{
+            background: "color-mix(in oklch, var(--warn) 10%, transparent)",
+            borderBottomColor: "color-mix(in oklch, var(--warn) 35%, transparent)",
+          }}
+        >
+          <AlertTriangle className="mt-0.5 size-4 flex-none" style={{ color: "var(--warn)" }} />
+          <span className="min-w-0">
+            <span className="font-semibold" style={{ color: "var(--warn)" }}>
+              Last attempt did not finish.{" "}
+            </span>
+            <span className="text-foreground/80">{campaign.lastError}</span>
+          </span>
+        </div>
+      )}
+      {brandPaused && (
+        <div className="flex items-center gap-2.5 border-b px-5 py-2.5 text-[13px] text-muted-foreground">
+          <PauseCircle className="size-4 flex-none" style={{ color: "var(--destructive)" }} />
+          Sending is paused for this brand, so this campaign cannot be sent or scheduled yet.
+        </div>
+      )}
 
       {/* ===== Body: canvas + inspector ===== */}
       <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: inspectorOpen ? "1fr 350px" : "1fr 0px", transition: "grid-template-columns .2s ease" }}>

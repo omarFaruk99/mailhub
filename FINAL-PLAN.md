@@ -3,6 +3,10 @@
 > নিজস্ব multi-brand Email Marketing সফটওয়্যার। পাঠানোর ইঞ্জিন: **Amazon SES**।
 > এক প্রতিষ্ঠান → অনেক brand/product → প্রতি brand-এ অনেক team।
 > বড় কোম্পানির (Mailchimp / HubSpot / SendGrid) মানের কাঠামো।
+>
+> 📧 **ইমেইল/SES/DNS-এর সব কিছু → [EMAIL-GUIDE.md](EMAIL-GUIDE.md)** — ইমেইল কীভাবে
+> কাজ করে, SPF/DKIM/DMARC, DevOps-এর জন্য ধাপে ধাপে AWS সেটআপ, খরচ, সমস্যা সমাধান,
+> আমাদের পুরো ইতিহাস, আর WordPress → MailHub হস্তান্তরের checklist।
 
 ---
 
@@ -248,7 +252,11 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 - Campaign type + একটি broadcast (filter সহ) SES দিয়ে পাঠানো
 - Unsubscribe + **one-click unsubscribe (RFC 8058)** + per-contact suppression
 - Bounce/complaint webhook (**SNS signature verify**) → auto-suppress
-- **⚠️ Auto-pause (brand/campaign-level circuit breaker — bounce/complaint rate হঠাৎ বাড়লে পুরো পাঠানো থামানো) — এখনো বানানো হয়নি, production-এর আগে বাধ্যতামূলক**
+- ~~**Auto-pause (brand-level circuit breaker)**~~ ✅ **সম্পন্ন** — bounce/complaint
+  হার বাড়লে ওই brand-এর পাঠানো নিজে থেকে বন্ধ; শুধু মানুষ আবার চালু করতে পারে
+  (auto-resume কখনো নয়)। সীমা ইচ্ছে করেই **target-এর চেয়ে ঢিলা** — bounce ৫%,
+  complaint **০.৩%** (Gmail/Yahoo যেখানে সত্যিই শাস্তি দেয়); ০.১% target-এ ৮০০ জনের
+  send-এ **একটা** complaint-ই সব বন্ধ করে দিত। বিস্তারিত: PROGRESS.md।
 - **Exactly-once sending**
 - বেসিক open/click tracking
 
@@ -294,9 +302,9 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
   পরিবর্তন: `internal` আর আগে থেকে টিক না করা)। পরে বদলানো সহজ — দুটো ৫ লাইনের ফাংশন,
   migration লাগে না, আর আগে থেকে schedule করা send-এ প্রভাব পড়ে না (তার audience
   `Campaign.sendOptions`-এ জমা থাকে)।
-- **আমাদের বনাম বড় কোম্পানি — সবচেয়ে বড় ফাঁক:** তারা bounce/complaint বাড়লে **নিজে
-  থেকে পাঠানো থামায়**; আমাদের **auto-pause এখনো নেই**। consent gate না রাখার সিদ্ধান্তের
-  কারণে এটাই প্রধান রক্ষাকবচ — **production-এর আগে বাধ্যতামূলক**।
+- **আমাদের বনাম বড় কোম্পানি — সেই ফাঁকটা এখন বন্ধ:** তারা bounce/complaint বাড়লে
+  নিজে থেকে পাঠানো থামায়; **আমাদেরও এখন auto-pause আছে** ✅। consent gate না রাখার
+  সিদ্ধান্তের কারণে এটাই প্রধান রক্ষাকবচ।
 - এখন **dedicated IP লাগবে না** — SES shared IP দিয়ে শুরু (দিনে ১ লাখ+ নিয়মিত হলে ভাবুন)।
 
 **ভবিষ্যতের জন্য টুকে রাখা (এখন বানাব না):**
