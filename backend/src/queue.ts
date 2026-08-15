@@ -2,7 +2,8 @@
 // scheduled send survives a server restart — the job is a database row.
 import { PgBoss, type JobWithMetadata } from "pg-boss";
 import { prisma } from "./prisma.js";
-import { sendCampaign, type SendFilter } from "./email/send-campaign.js";
+import { sendCampaign, SendingPausedError, type SendFilter } from "./email/send-campaign.js";
+import { isPaused } from "./email/auto-pause.js";
 
 export const SEND_QUEUE = "campaign-send";
 
@@ -21,6 +22,30 @@ async function runSendJob(campaignId: string, jobId: string, isLastAttempt: bool
   const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
   if (!campaign) {
     console.warn(`[queue] campaign ${campaignId} no longer exists — skipping`);
+    return;
+  }
+
+  // Auto-pause, checked before the claim so a blocked brand's campaign is never
+  // flipped to "sending" and straight back again. sendCampaign checks too — that
+  // one covers the race; this one keeps the status history clean.
+  //
+  // The write carries the SAME guard as the claim below (this exact job id, and a
+  // status that is still waiting). Without it an orphaned job — one whose cancel
+  // failed — could reach here and blank the schedule of a campaign it has no
+  // business touching, or reset one that has already been sent.
+  const paused = await isPaused(campaign.brandId);
+  if (paused.paused) {
+    console.error(`[queue] campaign ${campaignId} not sent — sending is paused: ${paused.reason}`);
+    await prisma.campaign.updateMany({
+      where: { id: campaignId, jobId, status: { in: ["scheduled", "sending"] } },
+      data: {
+        status: "draft",
+        scheduledAt: null,
+        timezone: null,
+        jobId: null,
+        lastError: `Not sent at the scheduled time — sending is paused for this brand (${paused.reason ?? "resume it to send again"})`,
+      },
+    });
     return;
   }
 
@@ -52,6 +77,24 @@ async function runSendJob(campaignId: string, jobId: string, isLastAttempt: bool
     const result = await sendCampaign(campaignId, filter);
     console.log(`[queue] campaign ${campaignId} sent:`, result);
   } catch (err) {
+    // Auto-pause is a deliberate block, not a transient fault — retrying it would
+    // just burn the retries and end at the same place. Stop now, put the campaign
+    // back to draft, and record WHY: nobody is on screen when this fires, so the
+    // reason has to survive somewhere the send page can read it.
+    if (err instanceof SendingPausedError) {
+      console.error(`[queue] campaign ${campaignId} not sent — sending is paused: ${err.reason}`);
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: {
+          status: "draft",
+          scheduledAt: null,
+          timezone: null,
+          jobId: null,
+          lastError: `Not sent at the scheduled time — sending is paused for this brand (${err.reason})`,
+        },
+      });
+      return; // resolve the job; a retry cannot help
+    }
     if (isLastAttempt) {
       // No retry left. "draft" would be indistinguishable from never-scheduled,
       // hiding the failure in a log nobody reads — mark it failed, which both
@@ -59,7 +102,13 @@ async function runSendJob(campaignId: string, jobId: string, isLastAttempt: bool
       console.error(`[queue] campaign ${campaignId} gave up after the last retry:`, err);
       await prisma.campaign.update({
         where: { id: campaignId },
-        data: { status: "failed", scheduledAt: null, timezone: null, jobId: null },
+        data: {
+          status: "failed",
+          scheduledAt: null,
+          timezone: null,
+          jobId: null,
+          lastError: `The scheduled send failed and ran out of retries: ${err instanceof Error ? err.message : String(err)}`,
+        },
       });
     } else {
       // Back to "scheduled" so the retry finds it in the state the guard expects;

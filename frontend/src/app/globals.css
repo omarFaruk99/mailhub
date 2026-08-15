@@ -28,6 +28,7 @@
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-good: var(--good);
+  --color-warn: var(--warn);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -66,6 +67,9 @@
   --accent-foreground: oklch(0.5 0.2 288);
   --destructive: oklch(0.577 0.245 27.325);
   --good: oklch(0.55 0.14 155);
+  /* Amber "needs attention, not broken yet" — used by the deliverability warning
+     banner. Distinct from --destructive (stopped) and --good (fine). */
+  --warn: oklch(0.58 0.15 70);
   --border: oklch(0.93 0.003 286);
   --input: oklch(0.93 0.003 286);
   --ring: oklch(0.52 0.19 288);
@@ -110,6 +114,7 @@
   --accent-foreground: oklch(0.82 0.1 288);
   --destructive: oklch(0.704 0.191 22.216);
   --good: oklch(0.72 0.15 155);
+  --warn: oklch(0.78 0.14 75);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.62 0.19 288);

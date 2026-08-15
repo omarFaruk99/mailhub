@@ -32,8 +32,12 @@ light/dark). Details, exact "done vs next", and run commands are in **PROGRESS.m
 
 **Two Phase 2 items are also done:** the **analytics dashboard** and **scheduling**
 (send later, with timezone — pg-boss jobs stored in our own PostgreSQL, so a
-scheduled send survives a restart). **Next up: auto-pause** — the one guardrail
-big tools have that we don't, and mandatory before SES production.
+scheduled send survives a restart). **Auto-pause is now done too** — the last
+Phase 1 guardrail, and the one big tools have that we didn't.
+
+**⚠️ The dev AWS SES keys are currently rejected** (`UnrecognizedClientException`),
+so nothing can actually be emailed until the owner creates new keys. Feature work
+is not blocked — see PROGRESS.md.
 
 **Dev servers:** after a merge, branch switch, or laptop restart, **restart both dev
 servers** — an orphaned Next.js process serves stale CSS/JS and looks like a bug
@@ -186,7 +190,19 @@ guides the user through each manual task.
   guardrails tight.)
 - Every email needs an **unsubscribe link + one-click unsubscribe header (RFC 8058)**.
 - Set up **SPF + DKIM + DMARC** per sending domain; warm up new domains.
-- Keep **bounce < 5%**, **complaint < 0.1%**. Add **auto-pause** if thresholds spike.
+- **`PUBLIC_URL` must be the real outside URL on the server.** Every unsubscribe /
+  open / click link in an email points at it and is opened days later from someone
+  else's inbox. Leaving it at localhost ships dead links to real customers.
+- Keep **bounce < 5%**, **complaint < 0.1%** — those are the **targets** shown on the
+  Analytics screen. **Auto-pause** (built; `backend/src/email/auto-pause.ts`) is the
+  **emergency brake** and sits deliberately looser — bounce 5%, complaint **0.3%**
+  (where Gmail/Yahoo actually penalise), plus floors of 50 emails and 2 events. At the
+  0.1% target a *single* complaint in an 800-person send would halt the company.
+  Keep these two levels distinct — do not "fix" the brake down to the target.
+- A pause is **per brand** and only a **person** can lift it. Never add auto-resume:
+  it would restart the very send that caused the spike.
+- `/track/click` must only redirect to links found in the email **that recipient**
+  was sent. Anything looser is an open redirect on our own sending domain.
 - Separate **transactional vs marketing** (ideally separate subdomains).
 - Handle bounces/complaints via SES→SNS webhook (verify SNS signature).
 - **Exactly-once sending** (no double emails on retry/crash).
@@ -200,9 +216,10 @@ guides the user through each manual task.
 
 ## Build phases (see FINAL-PLAN.md §10 for detail)
 
-1. **Phase 1 (MVP)** — one brand: sender identity, contacts + CSV import, one
-   broadcast via SES with filter, unsubscribe + suppression, bounce/complaint
-   webhook + auto-pause, exactly-once sending, basic open/click tracking.
+1. **Phase 1 (MVP)** — ✅ **complete**: one brand: sender identity, contacts + CSV
+   import, one broadcast via SES with filter, unsubscribe + suppression,
+   bounce/complaint webhook + ~~auto-pause~~ ✅, exactly-once sending, basic
+   open/click tracking.
 2. **Phase 2** — multi-team + RBAC, approval workflow, template editor, filters +
    saved segments, ~~scheduling + timezone~~ ✅, ~~analytics dashboard~~ ✅.
 3. **Phase 3** — multi-brand, preference center, automation/drip/triggered, A/B.

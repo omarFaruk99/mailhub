@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Users, Send, LayoutTemplate, Mail, Search, Moon, ChevronsUpDown, BarChart3 } from "lucide-react";
 import { useBrand } from "@/lib/use-brand";
+import { SendingPausedBanner } from "@/components/sending-paused-banner";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -84,8 +85,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* Main */}
-      <div className="flex min-w-0 flex-col">{children}</div>
+      {/* Main. The auto-pause bar is above the page content, not inside a page:
+          when sending is paused NOTHING can go out, so it must be visible from
+          wherever the user happens to be. */}
+      <div className="flex min-w-0 flex-col">
+        <SendingPausedBanner />
+        {children}
+      </div>
     </div>
   );
 }

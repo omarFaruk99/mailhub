@@ -2,6 +2,15 @@
 // the "Send now" endpoint and the scheduled-send worker.
 import { prisma } from "../prisma.js";
 import { sendEmail } from "./ses.js";
+import { isPaused, pauseIfUnhealthy } from "./auto-pause.js";
+
+/** Thrown when a send is refused because the brand's sending is paused. */
+export class SendingPausedError extends Error {
+  constructor(public reason: string) {
+    super(reason);
+    this.name = "SendingPausedError";
+  }
+}
 
 export const CONTACT_TYPES = ["client", "prospect", "internal"] as const;
 export type ContactType = (typeof CONTACT_TYPES)[number];
@@ -20,9 +29,24 @@ export type SendResult = {
   skippedAlready: number;
   failed: number;
   includeTypes: string[];
+  /** Set when auto-pause stopped the send before it reached everyone. */
+  stoppedReason?: string;
 };
 
-const base = () => `http://localhost:${process.env.BACKEND_PORT || 4000}`;
+// How often the send loop re-checks whether auto-pause has tripped. Bounces
+// arrive by webhook WHILE a long send is running, so checking only at the start
+// would let a bad list run to the end — exactly the case auto-pause exists for.
+const PAUSE_CHECK_EVERY = 25;
+
+// The public address this server is reachable at. Every unsubscribe link, open
+// pixel and tracked link in an email points here, and those links are opened days
+// later from a stranger's inbox — so it must be the real outside URL, never
+// "localhost" (which would resolve to the RECIPIENT's own machine).
+const base = () => {
+  const url = process.env.PUBLIC_URL?.trim();
+  if (url) return url.replace(/\/+$/, "");
+  return `http://localhost:${process.env.BACKEND_PORT || 4000}`;
+};
 
 // Which contact types each category is sent to BY DEFAULT (when the caller does
 // not pass includeTypes). This is the authoritative server-side rule; the UI
@@ -38,6 +62,29 @@ const escapeHtml = (s: string) =>
   s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch] as string));
 
 /**
+ * Merge tags: replace {{name}} with this contact's name (fallback "there").
+ *
+ * Exported because the click-tracking route has to reproduce it EXACTLY: links are
+ * rewritten from the personalized HTML, so a link containing {{name}} is not the
+ * link stored on the campaign. Two copies of this rule would drift and start
+ * rejecting real links — one function, called from both places.
+ *
+ * The value is HTML-escaped and passed as a function replacement, so a name
+ * containing <, &, " or $ can neither break the markup nor the replacement pattern.
+ */
+export function personalizeHtml(html: string, name?: string | null): string {
+  const safeName = escapeHtml(name?.trim() || "there");
+  return html.replace(/\{\{\s*name\s*\}\}/gi, () => safeName);
+}
+
+/** Every http(s) link in a piece of email HTML. */
+export function linksIn(html: string): Set<string> {
+  const found = new Set<string>();
+  for (const m of html.matchAll(/href="(https?:\/\/[^"]+)"/gi)) found.add(m[1]);
+  return found;
+}
+
+/**
  * Send one campaign to everyone matching `filter`.
  *
  * Exactly-once: a `CampaignRecipient` row is unique per (campaign, contact), so a
@@ -46,6 +93,14 @@ const escapeHtml = (s: string) =>
 export async function sendCampaign(campaignId: string, filter: SendFilter): Promise<SendResult> {
   const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
   if (!campaign) throw new Error("campaign not found");
+
+  // Last line of defence. The route and the worker both check before they get
+  // here, but this is the one function every send goes through, so a future
+  // caller cannot forget it.
+  const pausedAtStart = await isPaused(campaign.brandId);
+  if (pausedAtStart.paused) {
+    throw new SendingPausedError(pausedAtStart.reason ?? "sending is paused for this brand");
+  }
 
   const includeTypes =
     filter.includeTypes && filter.includeTypes.length > 0
@@ -78,8 +133,22 @@ export async function sendCampaign(campaignId: string, filter: SendFilter): Prom
   let skippedSuppressed = 0;
   let skippedAlready = 0;
   let failed = 0;
+  let processed = 0;
+  let stoppedReason: string | null = null;
 
   for (const c of contacts) {
+    // Re-check auto-pause every so often. A bounce webhook can trip the breaker
+    // halfway through a 700-person send; stopping here is the whole point.
+    if (processed > 0 && processed % PAUSE_CHECK_EVERY === 0) {
+      const state = await pauseIfUnhealthy(campaign.brandId);
+      if (state.paused) {
+        stoppedReason = state.reason ?? "sending is paused for this brand";
+        console.error(`[auto-pause] stopping campaign ${campaign.id} mid-send — ${stoppedReason}`);
+        break;
+      }
+    }
+    processed++;
+
     if (suppressedSet.has(c.email)) {
       skippedSuppressed++;
       continue;
@@ -115,11 +184,7 @@ export async function sendCampaign(campaignId: string, filter: SendFilter): Prom
     const b = base();
     const unsubUrl = `${b}/unsubscribe?b=${campaign.brandId}&c=${c.id}`;
 
-    // Merge tags: replace {{name}} with this contact's name (fallback "there").
-    // HTML-escape the value and use a function replacement so names containing
-    // <, &, ", or $ can't break the markup or the replacement pattern.
-    const safeName = escapeHtml(c.name?.trim() || "there");
-    const personalized = campaign.html.replace(/\{\{\s*name\s*\}\}/gi, () => safeName);
+    const personalized = personalizeHtml(campaign.html, c.name);
 
     // Click tracking: rewrite every http(s) link through /track/click.
     const body = personalized.replace(
@@ -173,11 +238,39 @@ export async function sendCampaign(campaignId: string, filter: SendFilter): Prom
   const deliveredEver = await prisma.campaignRecipient.count({
     where: { campaignId: campaign.id, status: "sent" },
   });
-  const finalStatus = deliveredEver === 0 && failed > 0 ? "failed" : "sent";
+  // Auto-pause stopped the loop with people still on the list. "sent" would claim
+  // it finished — and worse, both /schedule and the send page refuse a "sent"
+  // campaign, so the ~hundreds left over could never be scheduled, only blasted
+  // by hand. "failed" blames the email for a brand-level block. Draft is the
+  // truthful and actionable state: the campaign still has work to do. The send
+  // page keeps showing the results and "Send to N more" (it goes by recipient
+  // rows, not status), and `lastError` says why it stopped.
+  const unfinished = stoppedReason !== null && processed < contacts.length;
+  const finalStatus = unfinished
+    ? "draft"
+    : deliveredEver === 0 && failed > 0
+      ? "failed"
+      : "sent";
   await prisma.campaign.update({
     where: { id: campaign.id },
-    data: { status: finalStatus, jobId: null, scheduledAt: null, timezone: null },
+    data: {
+      status: finalStatus,
+      jobId: null,
+      scheduledAt: null,
+      timezone: null,
+      // Why it did not finish, kept for the send page. Cleared on a clean run so
+      // an old reason never lingers on a campaign that has since gone out fine.
+      lastError: stoppedReason ? `Stopped early — ${stoppedReason}` : null,
+    },
   });
 
-  return { matched: contacts.length, sent, skippedSuppressed, skippedAlready, failed, includeTypes };
+  return {
+    matched: contacts.length,
+    sent,
+    skippedSuppressed,
+    skippedAlready,
+    failed,
+    includeTypes,
+    ...(stoppedReason ? { stoppedReason } : {}),
+  };
 }

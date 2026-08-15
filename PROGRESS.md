@@ -26,7 +26,17 @@ real emails delivered via Amazon SES.
 - **Webhook** `/webhooks/ses` (SNS): bounce/complaint → auto-suppress; SNS signature
   verify (`sns-validator`); dev bypass env `SNS_SKIP_VERIFY=true`.
 - **Tracking**: open pixel `/track/open`, click redirect `/track/click` → sets
-  `openedAt` / `clickedAt`.
+  `openedAt` / `clickedAt`. The click route only redirects to a link that actually
+  appears in the email **this recipient** was sent (campaign HTML with their merge
+  tags filled in, via the shared `personalizeHtml`/`linksIn` in `send-campaign.ts`).
+  Without that it was an **open redirect** — anyone could point our domain at a
+  phishing page, which is how a sending domain's reputation gets destroyed by
+  someone who never touched the account.
+- **`PUBLIC_URL`** (new env) is the address the backend is reachable at from the
+  outside. Every unsubscribe link, open pixel and tracked link points there, and
+  they are opened days later from someone else's inbox — on the server this MUST be
+  the real public URL. It used to be hardcoded to `localhost:4000`, which would have
+  shipped broken links to real customers. Unset in dev → falls back to localhost.
 - **Templates**: CRUD (`src/routes/templates.ts`) for saved email designs
   (`Template` model = name, subject, `category`, `html`, `isStarter`). Approach is
   **template + HTML** (everyone edits HTML directly; no fill-in-fields/drag-drop yet).
@@ -58,6 +68,30 @@ real emails delivered via Amazon SES.
   - Known gap: no "Retry failed" for a send that gave up — after the last retry the
     campaign goes back to **draft** (visibly not sent) rather than sitting on a
     schedule that will never fire.
+- **Auto-pause (circuit breaker)** — `src/email/auto-pause.ts`. Sending stops for a
+  **brand** when bounce/complaint rates spike; only a person can resume it.
+  - Checked in four places: before `/send` (423), before the scheduled worker runs,
+    at the top of `sendCampaign`, and **every 25 emails inside the send loop** — a
+    bounce webhook can trip the breaker halfway through a 700-person send, which is
+    the case it exists for. The webhook itself re-checks the moment SES reports a
+    bounce/complaint.
+  - **Emergency levels, looser than the Analytics targets on purpose:** bounce 5%,
+    complaint **0.3%** (where Gmail/Yahoo actually penalise). At the 0.1% *target*
+    one complaint in an 800-person send is 0.125% and would halt the company.
+    Two floors stop small numbers looking like disasters: `minSent` 50 and
+    `minEvents` 2. All tunable via `AUTOPAUSE_*` env (see `.env.example`).
+  - **Both sides of the rate use the same window AND the same population:** an event
+    only counts if that address was mailed *within the window*. Sends are stamped
+    when they go out, bounces when SES reports them (days later) — without this, an
+    old send's bounces divided by a small recent denominator read as 40%+.
+  - `Suppression.lastEventAt` (new) is when the reason was last set — `createdAt`
+    can't answer that (unsubscribed in March, bounced in July keeps March).
+  - `Campaign.lastError` (new) records why an attempt did not finish, because the
+    worker runs with nobody on screen. Cleared by `/send`, `/schedule`, `/unschedule`.
+  - A send stopped mid-way goes back to **draft**, not "sent" — "sent" would claim it
+    finished and would block scheduling the people who were missed.
+  - API: `GET /brands/:id/sending-status` · `POST /brands/:id/resume-sending`
+    (`{force:true}` overrides a still-breached threshold) · `POST /brands/:id/pause-sending`.
 - **Analytics**: `GET /brands/:brandId/analytics?days=N` (`src/routes/analytics.ts`) —
   windowed totals + open/click rates, a zero-filled **daily series** for the last N days
   (UTC buckets), all-time **deliverability** (bounce/complaint/unsubscribe), and
@@ -127,8 +161,10 @@ real emails delivered via Amazon SES.
   (`src/lib/use-brand.ts` uses the first brand).
 
 ### DB schema (Prisma models)
-Brand, Contact (now with `type` + `company`), Campaign (now with the scheduling
-fields), CampaignRecipient, Suppression, Template.
+Brand (now with the auto-pause fields `sendingPaused` / `pausedAt` / `pauseReason` /
+`pausedBy`), Contact (now with `type` + `company`), Campaign (now with the scheduling
+fields + `lastError`), CampaignRecipient, Suppression (now with `lastEventAt`),
+Template.
 (Migrations in `backend/prisma/migrations/`.)
 
 ### Defaults the system applies (know these before changing behaviour)
@@ -205,14 +241,21 @@ to email **actual customers**. Until then keep building + self-testing on verifi
   approve, so start a bit before launch. Adds SPF/DMARC + custom MAIL FROM.
 - **#Deploy**: docker-compose (backend+frontend) + nginx + SSL on the company Linux server.
 
+## ⚠️ Blocked right now: the dev AWS SES keys are rejected
+`POST /test-email` to SES returns **`UnrecognizedClientException` — "The security
+token included in the request is invalid"** for every address, including the
+simulator. Nothing can actually be emailed until new keys are created in the
+personal AWS account and put in `backend/.env`
+(`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`). Owner task. It does not block
+feature work — auto-pause was verified end-to-end without SES (49/49 checks).
+
 ## ▶️ Recommended next steps (in order)
 All buildable + self-testable now with personal credentials (SES production + deploy
 stay LAST, only at real launch — see the "Dev scope" section above).
 0. ~~**Analytics dashboard**~~ ✅ **DONE** · ~~**Scheduling**~~ ✅ **DONE**
-   (PRs #7–#11; branches `claude/analytics-dashboard`, `claude/scheduling*`).
-1. **Auto-pause (circuit breaker)** — stop sending when bounce/complaint spikes.
-   Small, and **mandatory before production**. It is the one guardrail big tools
-   have that we don't, and the no-consent-gate decision makes it load-bearing.
+   (PRs #7–#11) · ~~**Auto-pause**~~ ✅ **DONE** (branch `claude/auto-pause`, with
+   the `PUBLIC_URL` fix and the click open-redirect fix in the same round).
+1. **New SES keys** (owner) — see the blocker above; then re-verify a real send.
 2. **Saved segments + working global search** (contact `type`/`company` filters exist;
    save named segments + wire the sidebar search box).
 3. **Teams + RBAC roles + approval workflow** (Draft→Review→Approve→Send) — one bigger

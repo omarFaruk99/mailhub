@@ -2,7 +2,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { CONTACT_TYPES, sendCampaign, type SendFilter } from "../email/send-campaign.js";
+import { CONTACT_TYPES, sendCampaign, SendingPausedError, type SendFilter } from "../email/send-campaign.js";
+import { isPaused } from "../email/auto-pause.js";
 import { getQueue, SEND_QUEUE, type SendJobData } from "../queue.js";
 import { zonedTimeToUtc } from "../lib/timezone.js";
 
@@ -70,6 +71,16 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
     return res.status(409).json({ error: "this campaign is being sent right now" });
   }
 
+  // Auto-pause. Checked BEFORE the claim below so a refused send leaves the
+  // campaign exactly as it was — no status churn, no cleared schedule.
+  const paused = await isPaused(campaign.brandId);
+  if (paused.paused) {
+    return res.status(423).json({
+      error: `Sending is paused for this brand — ${paused.reason ?? "resume it to send again"}`,
+      paused: true,
+    });
+  }
+
   // Claim it the same way the worker does, in one conditional write. Without
   // this the status stays "draft" for the whole loop, and the "being sent right
   // now" guards above and in /schedule would never actually trigger.
@@ -77,7 +88,10 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
   // the worker only sends when Campaign.jobId still matches its own job id.
   const claimed = await prisma.campaign.updateMany({
     where: { id: campaign.id, status: { in: ["draft", "scheduled", "sent", "failed"] } },
-    data: { status: "sending", jobId: null, scheduledAt: null, timezone: null },
+    // lastError is cleared here: it describes the PREVIOUS attempt, and leaving it
+    // would put a stale "sending is paused" warning on a send that is happening
+    // right now. sendCampaign writes the new one if this attempt also stops.
+    data: { status: "sending", jobId: null, scheduledAt: null, timezone: null, lastError: null },
   });
   if (claimed.count === 0) {
     return res.status(409).json({ error: "this campaign is being sent right now" });
@@ -92,6 +106,11 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
     // sendCampaign sets the final status itself; it only throws before getting
     // there, so release the claim instead of leaving the campaign stuck.
     await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "draft" } });
+    // Auto-pause tripped between the check above and the send starting. It is a
+    // blocked request, not a server fault — answer it the same way as the check.
+    if (e instanceof SendingPausedError) {
+      return res.status(423).json({ error: `Sending is paused for this brand — ${e.reason}`, paused: true });
+    }
     throw e;
   }
 });
@@ -145,7 +164,10 @@ router.post("/campaigns/:campaignId/schedule", async (req, res) => {
   // job and a campaign that never fires.
   const saved = await prisma.campaign.updateMany({
     where: { id: campaign.id, status: { in: ["draft", "scheduled", "failed"] } },
-    data: { status: "scheduled", scheduledAt: runAt, timezone, sendOptions: filter, jobId },
+    // lastError belongs to the attempt that failed; giving the campaign a new time
+    // is the answer to it. Leaving it would keep "sending is paused" on screen long
+    // after the pause was resolved and the send re-booked.
+    data: { status: "scheduled", scheduledAt: runAt, timezone, sendOptions: filter, jobId, lastError: null },
   });
   if (saved.count === 0) {
     // Nothing was stored, so the job we just created must not survive.
@@ -171,7 +193,9 @@ router.post("/campaigns/:campaignId/unschedule", async (req, res) => {
   // must fail rather than tell the user a running send was cancelled.
   const released = await prisma.campaign.updateMany({
     where: { id: campaign.id, status: "scheduled" },
-    data: { status: "draft", scheduledAt: null, timezone: null, jobId: null },
+    // Same as /schedule: the old failure notice must not outlive the decision the
+    // user has just made about this campaign.
+    data: { status: "draft", scheduledAt: null, timezone: null, jobId: null, lastError: null },
   });
   if (released.count === 0) {
     return res.status(409).json({

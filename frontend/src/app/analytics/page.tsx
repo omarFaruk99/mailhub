@@ -1,11 +1,14 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, AlertTriangle, Minus } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { CheckCircle2, AlertTriangle, Minus, PauseCircle, ShieldCheck } from "lucide-react";
 import { api, type Analytics } from "@/lib/api";
 import { useBrand } from "@/lib/use-brand";
+import { sendingStatusKey, useSendingStatus } from "@/lib/use-sending-status";
 import { PageHeader } from "@/components/app-shell";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -199,6 +202,9 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
+        {/* Auto-pause — the live guard, not a report */}
+        <SendingGuardCard />
+
         {/* Per-campaign performance */}
         <Card>
           <CardHeader>
@@ -222,6 +228,157 @@ export default function AnalyticsPage() {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * Auto-pause, shown as its own card because it answers a different question from
+ * the Deliverability card above it.
+ *
+ * Deliverability = "how have we done, all time". This = "may we send RIGHT NOW",
+ * measured over a short rolling window. A list that goes bad today barely moves an
+ * all-time rate, which is exactly why the guard uses its own window.
+ */
+function SendingGuardCard() {
+  const { brand } = useBrand();
+  const { data: s, isPending } = useSendingStatus();
+  const qc = useQueryClient();
+
+  const pause = useMutation({
+    mutationFn: () => api.pauseSending(brand!.id, "Paused by hand from Analytics"),
+    onSuccess: () => {
+      toast.success("Sending paused — nothing will go out until you resume it");
+      qc.invalidateQueries({ queryKey: sendingStatusKey(brand?.id) });
+    },
+    onError: (e: Error) => toast.error("Could not pause: " + e.message),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Sending guard (auto-pause)</CardTitle>
+        <CardDescription>
+          Sending stops by itself if bounces or spam complaints spike, so a bad list
+          cannot burn the brand&apos;s reputation. Measured over a short rolling window —
+          separate from the all-time numbers above.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {isPending || !s ? (
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <span
+                className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-semibold"
+                style={
+                  s.paused
+                    ? { background: "color-mix(in oklch, var(--destructive) 14%, transparent)", color: "var(--destructive)" }
+                    : { background: "color-mix(in oklch, var(--good) 16%, transparent)", color: "var(--good)" }
+                }
+              >
+                {s.paused ? <PauseCircle className="size-4" /> : <ShieldCheck className="size-4" />}
+                {s.paused ? "Paused" : "Sending allowed"}
+              </span>
+              {s.paused ? (
+                <span className="text-sm text-muted-foreground">
+                  {s.pauseReason} · {s.pausedBy === "manual" ? "paused by hand" : "paused automatically"}
+                </span>
+              ) : (
+                // The button lives here, not in the banner: the banner only exists
+                // when something is wrong, and this is the deliberate "hold
+                // everything" switch for when a person spots a problem first.
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => pause.mutate()}
+                  disabled={pause.isPending || !brand}
+                >
+                  <PauseCircle className="size-4" />
+                  {pause.isPending ? "Pausing…" : "Pause sending"}
+                </Button>
+              )}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Guard
+                label="Bounce"
+                rate={s.bounceRate}
+                count={s.bounces}
+                limit={s.thresholds.bounceRate}
+                enoughData={s.enoughData}
+              />
+              <Guard
+                label="Complaint"
+                rate={s.complaintRate}
+                count={s.complaints}
+                limit={s.thresholds.complaintRate}
+                enoughData={s.enoughData}
+              />
+              <div className="rounded-xl border p-4">
+                <div className="text-sm text-muted-foreground">Window</div>
+                <div className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
+                  {s.windowDays} days
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+                  {s.sent} emails sent · needs {s.thresholds.minSent}+ to act
+                </div>
+              </div>
+            </div>
+
+            {!s.enoughData && (
+              // Without this the card looks broken during normal small-volume use:
+              // the rates are shown but nothing happens when they look terrible.
+              <p className="text-xs text-muted-foreground">
+                Only {s.sent} emails in the last {s.windowDays} days. Below{" "}
+                {s.thresholds.minSent} the rates are too small to mean anything, so
+                sending is never paused automatically yet.
+              </p>
+            )}
+            {s.enoughData && (
+              // The limits here are looser than the targets in the Deliverability
+              // card above, and that difference is deliberate — say so, or the two
+              // cards look like they disagree.
+              <p className="text-xs text-muted-foreground">
+                These are emergency limits, set a little looser than the targets above:
+                a pause stops every send until someone resumes it, so it needs at least{" "}
+                {s.thresholds.minEvents} bounces or complaints behind it — never a single one.
+              </p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// One threshold box for the guard card. Greyed out while there is too little data,
+// so a scary-looking 50% on two test emails never reads as a real alarm.
+function Guard({
+  label, rate, count, limit, enoughData,
+}: { label: string; rate: number | null; count: number; limit: number; enoughData: boolean }) {
+  const over = rate !== null && rate > limit;
+  const active = enoughData && rate !== null;
+  const Icon = !active ? Minus : over ? AlertTriangle : CheckCircle2;
+  const state = !active ? "Not enough data" : over ? "Over limit" : "Healthy";
+  const tone = !active ? "text-muted-foreground" : over ? "text-destructive" : "text-good";
+
+  return (
+    <div className="rounded-xl border p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">{label}</span>
+        <span className={`flex items-center gap-1 text-xs font-medium ${tone}`}>
+          <Icon className="size-3.5" />
+          {state}
+        </span>
+      </div>
+      <div className={`mt-2 text-2xl font-semibold tracking-tight ${active ? "" : "text-muted-foreground"}`}>
+        {pct(rate, 2)}
+      </div>
+      <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+        {count} in window · limit {pct(limit, limit < 0.01 ? 2 : 0)}
+      </div>
+    </div>
   );
 }
 

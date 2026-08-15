@@ -5,6 +5,7 @@ import Papa from "papaparse";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { seedStarterTemplates } from "../data/starter-templates.js";
+import { pauseSending, resumeSending, sendingStatus } from "../email/auto-pause.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -36,6 +37,53 @@ router.post("/brands", async (req, res) => {
 
 router.get("/brands", async (_req, res) => {
   res.json(await prisma.brand.findMany({ orderBy: { createdAt: "asc" } }));
+});
+
+// ---- Auto-pause (circuit breaker) ----
+// Whether this brand may send, plus the rolling bounce/complaint numbers behind
+// that answer. Every screen polls this, so it stays a cheap read.
+router.get("/brands/:brandId/sending-status", async (req, res) => {
+  const status = await sendingStatus(req.params.brandId);
+  if (!status) return res.status(404).json({ error: "brand not found" });
+  res.json(status);
+});
+
+// Let this brand send again. Refused while the thresholds are still crossed —
+// pass { force: true } to override, which is the "I have already cleaned the list"
+// case (the rolling window still carries the old events for days).
+const resumeSchema = z.object({ force: z.boolean().optional() });
+
+router.post("/brands/:brandId/resume-sending", async (req, res) => {
+  const parsed = resumeSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+
+  const brand = await prisma.brand.findUnique({ where: { id: req.params.brandId } });
+  if (!brand) return res.status(404).json({ error: "brand not found" });
+
+  const result = await resumeSending(brand.id, parsed.data.force ?? false);
+  if (!result.ok) {
+    return res.status(409).json({
+      error: `Still over the limit — ${result.reason}. Clean the list first, or resume anyway.`,
+      canForce: true,
+      health: result.health,
+    });
+  }
+  res.json(await sendingStatus(brand.id));
+});
+
+// Stop this brand's sending by hand — the "something looks wrong, hold everything"
+// switch. Same block as an automatic pause; only a resume clears it.
+const pauseSchema = z.object({ reason: z.string().min(1).optional() });
+
+router.post("/brands/:brandId/pause-sending", async (req, res) => {
+  const parsed = pauseSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+
+  const brand = await prisma.brand.findUnique({ where: { id: req.params.brandId } });
+  if (!brand) return res.status(404).json({ error: "brand not found" });
+
+  await pauseSending(brand.id, parsed.data.reason?.trim() || "Paused by hand");
+  res.json(await sendingStatus(brand.id));
 });
 
 // ---- Contacts (inside a brand) ----
