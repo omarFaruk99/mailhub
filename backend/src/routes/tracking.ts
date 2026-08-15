@@ -1,7 +1,7 @@
 // Open & click tracking.
 import { Router } from "express";
 import { prisma } from "../prisma.js";
-import { linksIn, personalizeHtml } from "../email/send-campaign.js";
+import { isCampaignLink } from "../email/send-campaign.js";
 
 const router = Router();
 
@@ -43,23 +43,16 @@ router.get("/track/click", async (req, res) => {
   // to their phishing page. That is the classic way a sending domain's reputation
   // is destroyed by someone who never touched our account.
   //
-  // The rule: only redirect to a link that actually appears in the email THIS
-  // recipient was sent. `r` names the recipient row, which names the campaign and
-  // the contact — and the email they received was the campaign's HTML with the
-  // merge tags filled in, so the comparison has to be made against that same
-  // personalized text (a link containing {{name}} is not the stored link).
+  // The rule: only redirect to a link that appears in the campaign this recipient
+  // was sent. `r` names the recipient row, which names the campaign, whose stored
+  // HTML is the only source of legitimate targets (see isCampaignLink for how
+  // personalized links are handled).
   let target: string | null = null;
   if (r && u) {
     const rec = await prisma.campaignRecipient
-      .findUnique({
-        where: { id: r },
-        select: { campaign: { select: { html: true } }, contact: { select: { name: true } } },
-      })
+      .findUnique({ where: { id: r }, select: { campaign: { select: { html: true } } } })
       .catch(() => null);
-    if (rec) {
-      const sentHtml = personalizeHtml(rec.campaign.html, rec.contact.name);
-      if (linksIn(sentHtml).has(u)) target = u;
-    }
+    if (rec && isCampaignLink(rec.campaign.html, u)) target = u;
     if (!target) console.warn(`[track] refused click redirect to an unknown target: ${u}`);
   }
 

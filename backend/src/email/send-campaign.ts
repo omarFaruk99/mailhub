@@ -84,6 +84,57 @@ export function linksIn(html: string): Set<string> {
   return found;
 }
 
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const MERGE_TAG = /\{\{\s*name\s*\}\}/gi;
+
+/**
+ * Is `url` one of the links this campaign puts in its emails?
+ *
+ * Compared against the campaign's STORED html, with each merge tag standing for
+ * "whatever was substituted here". Comparing against one recipient's personalized
+ * copy instead would tie every past link to the value the tag has NOW — so
+ * renaming a contact would silently kill the links already in their inbox.
+ *
+ * The security boundary is the ORIGIN, checked separately from the shape. A tag
+ * may stand for anything (names contain slashes, question marks, spaces), but the
+ * scheme+host must be exactly the one the campaign's author wrote. Redirecting
+ * within a site the sender chose is not an open redirect; redirecting to another
+ * host is, and that is what this refuses.
+ */
+export function isCampaignLink(campaignHtml: string, url: string): boolean {
+  // Whitespace and control characters can never appear in a link we generated,
+  // and a CR/LF here would both slip past an anchored pattern and make
+  // res.redirect throw on an illegal header value.
+  if (/[\s\u0000-\u001f\u007f]/.test(url)) return false;
+
+  let candidate: URL;
+  try {
+    candidate = new URL(url);
+  } catch {
+    return false;
+  }
+  if (candidate.protocol !== "http:" && candidate.protocol !== "https:") return false;
+
+  for (const raw of linksIn(campaignHtml)) {
+    if (raw === url) return true;
+    if (!raw.match(MERGE_TAG)) continue;
+
+    // Same origin as the stored link — measured with the tag filled by a harmless
+    // placeholder, so a tag inside the host cannot widen this.
+    let base: URL;
+    try {
+      base = new URL(raw.replace(MERGE_TAG, "x"));
+    } catch {
+      continue;
+    }
+    if (base.origin !== candidate.origin) continue;
+
+    const pattern = raw.split(MERGE_TAG).map(escapeRegex).join("\\S*");
+    if (new RegExp(`^${pattern}$`).test(url)) return true;
+  }
+  return false;
+}
+
 /**
  * Send one campaign to everyone matching `filter`.
  *

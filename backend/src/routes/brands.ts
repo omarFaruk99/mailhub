@@ -139,6 +139,116 @@ router.get("/brands/:brandId/contacts", async (req, res) => {
   res.json(contacts);
 });
 
+// ---- Edit one contact ----
+// Everything except `status` may change. Status is deliberately read-only: it is
+// set by what PEOPLE did (unsubscribed, bounced, complained), and letting an
+// operator type "subscribed" over it would re-enrol someone who asked to be left
+// alone — the one mistake that is both illegal and reputation-destroying.
+const contactEditSchema = contactSchema.partial();
+
+router.put("/contacts/:id", async (req, res) => {
+  const parsed = contactEditSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+
+  const contact = await prisma.contact.findUnique({ where: { id: req.params.id } });
+  if (!contact) return res.status(404).json({ error: "contact not found" });
+
+  const clean = (s?: string) => {
+    const t = s?.trim();
+    return t ? t : null;
+  };
+
+  const data: Record<string, unknown> = {};
+  if (parsed.data.name !== undefined) data.name = clean(parsed.data.name);
+  if (parsed.data.country !== undefined) data.country = clean(parsed.data.country);
+  if (parsed.data.plan !== undefined) data.plan = clean(parsed.data.plan);
+  if (parsed.data.type !== undefined) data.type = parsed.data.type;
+  if (parsed.data.company !== undefined) data.company = clean(parsed.data.company);
+  // internal (our colleagues) never carry a company — same rule as create/import.
+  // Applied against the type this contact will HAVE, not the one it had.
+  const finalType = (data.type as string | undefined) ?? contact.type;
+  if (finalType === "internal") data.company = null;
+
+  if (parsed.data.email !== undefined) {
+    const email = parsed.data.email.trim().toLowerCase();
+    if (email !== contact.email) {
+      // Changing the address of someone we are forbidden to email would hand them
+      // a fresh, unsuppressed identity — an unsubscribe undone by a typo fix. The
+      // suppression list is keyed by address, so it cannot follow the rename.
+      // Fixing a genuinely mistyped address is still possible: delete the contact
+      // and add the correct one, which is the honest description of what happened.
+      const suppressed = await prisma.suppression.findUnique({
+        where: { brandId_email: { brandId: contact.brandId, email: contact.email } },
+      });
+      if (suppressed) {
+        return res.status(409).json({
+          error:
+            `This address is on the do-not-send list (${suppressed.reason}), so it cannot be changed — ` +
+            `a new address would quietly bring them back into the audience. ` +
+            `If the address was simply mistyped, delete this contact and add the correct one.`,
+        });
+      }
+      data.email = email;
+    }
+  }
+
+  try {
+    const updated = await prisma.contact.update({ where: { id: contact.id }, data });
+    res.json(updated);
+  } catch (e: any) {
+    if (e.code === "P2002") return res.status(409).json({ error: "another contact in this brand already uses that email" });
+    throw e;
+  }
+});
+
+// ---- Delete one contact ----
+// Their send history goes too (recipient rows point at the contact). The
+// suppression row does NOT: it is keyed by email, not by contact, and it is the
+// only thing standing between us and emailing an unsubscribed person again after
+// a future CSV import re-adds them. Deleting a contact must never be a way to
+// clear a suppression.
+router.delete("/contacts/:id", async (req, res) => {
+  const contact = await prisma.contact.findUnique({ where: { id: req.params.id } });
+  if (!contact) return res.status(404).json({ error: "contact not found" });
+
+  // The send loop walks a list of contacts it read at the start and writes a
+  // recipient row for each. Delete the one it is about to reach and that write
+  // fails on a missing foreign key, taking the whole broadcast down mid-flight.
+  // Any send running for this brand is enough reason to wait — a send is minutes,
+  // and deleting a contact is never urgent.
+  const sending = await prisma.campaign.count({
+    where: { brandId: contact.brandId, status: "sending" },
+  });
+  if (sending > 0) {
+    return res.status(409).json({
+      error: "a campaign is being sent right now — wait for it to finish before deleting contacts",
+    });
+  }
+
+  let historyDeleted: number;
+  try {
+    [{ count: historyDeleted }] = await prisma.$transaction([
+      prisma.campaignRecipient.deleteMany({ where: { contactId: contact.id } }),
+      prisma.contact.deleteMany({ where: { id: contact.id } }),
+    ]);
+  } catch (e: any) {
+    // The check above is read-then-act, so a send can still claim a campaign and
+    // write a recipient row for this contact between the two. The foreign key
+    // catches it; answer the same way the guard would rather than a 500.
+    if (e?.code === "P2003") {
+      return res.status(409).json({
+        error: "a campaign started sending just now and reached this contact — nothing was deleted",
+      });
+    }
+    throw e;
+  }
+
+  const stillSuppressed = await prisma.suppression.findUnique({
+    where: { brandId_email: { brandId: contact.brandId, email: contact.email } },
+  });
+  res.json({ ok: true, historyDeleted, stillSuppressed: !!stillSuppressed });
+});
+
 // List suppressed emails of a brand (used e.g. for an accurate send preview).
 router.get("/brands/:brandId/suppressions", async (req, res) => {
   const rows = await prisma.suppression.findMany({

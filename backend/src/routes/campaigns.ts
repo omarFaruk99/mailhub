@@ -40,6 +40,127 @@ router.get("/brands/:brandId/campaigns", async (req, res) => {
   );
 });
 
+// ---- Edit a campaign ----
+// What may change depends on whether the email has actually reached anybody —
+// not on `status`. A "sent" campaign where every attempt failed reached nobody, and
+// a draft with leftover rows from an interrupted send did reach some people. The
+// count of delivered rows is the only honest test.
+//
+// Once ONE person has the email, the content is history:
+//   * their inbox still shows the old text, so editing here makes our record a lie;
+//   * /track/click only follows links that appear in `campaign.html`, so rewriting
+//     it turns every link already sitting in someone's inbox into a dead 400.
+// The name is different — it is our internal label, never sent — so it stays editable.
+const campaignEditSchema = campaignSchema.partial();
+
+router.put("/campaigns/:campaignId", async (req, res) => {
+  const parsed = campaignEditSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+
+  const campaign = await prisma.campaign.findUnique({ where: { id: req.params.campaignId } });
+  if (!campaign) return res.status(404).json({ error: "campaign not found" });
+  if (campaign.status === "sending") {
+    return res.status(409).json({ error: "this campaign is being sent right now" });
+  }
+
+  const { name, ...content } = parsed.data;
+  const changesContent = Object.values(content).some((v) => v !== undefined);
+
+  // The audience is frozen into `sendOptions` at schedule time, and the category
+  // is what decides that audience by default. Change the category now and the two
+  // silently disagree: a campaign scheduled as "Product updates" carries internal
+  // staff in its frozen audience, so relabelling it "Marketing/Offers" would send
+  // marketing to colleagues — the one thing the category rule exists to prevent.
+  // Cancelling the schedule releases the frozen audience, so that is the way out.
+  if (
+    campaign.status === "scheduled" &&
+    parsed.data.category !== undefined &&
+    parsed.data.category !== campaign.category
+  ) {
+    return res.status(409).json({
+      error:
+        "Cancel the schedule before changing the category — the audience was frozen for the current one, " +
+        "and changing the category without re-picking the audience could send this to the wrong people.",
+    });
+  }
+  if (changesContent) {
+    const delivered = await prisma.campaignRecipient.count({
+      // Rows stuck at "sending" count as delivered. The row is created BEFORE the
+      // SES call, so a crash right after SES accepted the message leaves exactly
+      // this state — the person has the email, we just never recorded it. Treating
+      // those as "nobody got it" would let the content be rewritten under them.
+      where: { campaignId: campaign.id, status: { in: ["sent", "sending"] } },
+    });
+    if (delivered > 0) {
+      return res.status(409).json({
+        error:
+          `This campaign has already been delivered to ${delivered} ${delivered === 1 ? "person" : "people"}, ` +
+          `so its subject and content can no longer be changed. Duplicate it to make a new version. ` +
+          `(You can still rename it.)`,
+        delivered,
+      });
+    }
+  }
+
+  // Guard the write with the status we just read: a scheduled send could fire in
+  // between, and an unconditional update would then rewrite an email mid-flight.
+  const updated = await prisma.campaign.updateMany({
+    where: { id: campaign.id, status: campaign.status },
+    data: parsed.data,
+  });
+  if (updated.count === 0) {
+    return res.status(409).json({ error: "the campaign changed while you were editing — reload and try again" });
+  }
+  res.json(await prisma.campaign.findUnique({ where: { id: campaign.id } }));
+});
+
+// ---- Delete a campaign ----
+// Deleting a campaign that went out also deletes its recipient rows, and those
+// rows ARE the analytics — open/click history disappears with them. That is the
+// caller's decision to make (clearing out test campaigns is a real need), so it is
+// allowed; the UI says plainly what will be lost. Only a send in progress is
+// refused, because deleting the row underneath a running loop breaks it.
+router.delete("/campaigns/:campaignId", async (req, res) => {
+  const campaign = await prisma.campaign.findUnique({ where: { id: req.params.campaignId } });
+  if (!campaign) return res.status(404).json({ error: "campaign not found" });
+  if (campaign.status === "sending") {
+    return res.status(409).json({ error: "this campaign is being sent right now — wait for it to finish" });
+  }
+
+  // One transaction, and the campaign row goes LAST with the same "not sending"
+  // guard as the check above. Recipient rows have to be removed first (they point
+  // at the campaign), which means the destructive half happens before we know we
+  // are allowed to finish — so if a scheduled send claimed the campaign in the
+  // meantime, throwing here rolls the whole transaction back and the history
+  // survives. Deleting the rows and keeping the campaign was the worst outcome:
+  // exactly-once forgets who was already emailed.
+  class CampaignBusy extends Error {}
+  let recipientsDeleted: number;
+  try {
+    recipientsDeleted = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.campaignRecipient.deleteMany({ where: { campaignId: campaign.id } });
+      const removed = await tx.campaign.deleteMany({
+        where: { id: campaign.id, status: { not: "sending" } },
+      });
+      if (removed.count === 0) throw new CampaignBusy();
+      return count;
+    });
+  } catch (e) {
+    if (e instanceof CampaignBusy) {
+      return res.status(409).json({ error: "this campaign started sending just now — nothing was deleted" });
+    }
+    throw e;
+  }
+
+  // Only now that the campaign is really gone. Cancelling first meant a rolled-back
+  // transaction left a still-"scheduled" campaign pointing at a job that no longer
+  // exists — showing "Scheduled" forever and never firing. The other order is safe:
+  // a job that outlives its campaign finds nothing and says so in the log.
+  if (campaign.jobId) await getQueue()?.cancel(SEND_QUEUE, campaign.jobId).catch(() => {});
+
+  res.json({ ok: true, recipientsDeleted });
+});
+
 // ---- Recipients of a campaign (with open/click status) ----
 router.get("/campaigns/:campaignId/recipients", async (req, res) => {
   res.json(
