@@ -251,16 +251,33 @@ Two different things, easy to confuse:
 | **Dev access keys** | The personal-AWS `AKIA…` key pair in `backend/.env`. **Already provided** (Step 5, July) — real emails were delivered with it. | done long ago |
 | **SES production access** | AWS lifting the sandbox so we may email **unverified** people. | **LAST, at real launch** — unchanged |
 
-The keys are still present in `backend/.env` and are the right shape, but AWS now
-answers every send — including the simulator address — with
-**`UnrecognizedClientException` — "The security token included in the request is
-invalid"**. That means AWS no longer recognises the key itself (deactivated,
-deleted, or the IAM user removed), not that anything is wrong with our code.
+**Cause confirmed (2026-08-15): the personal AWS account is CLOSED.** Signing in
+shows "Your account is closed… If you do not reactivate your account, your account
+will be permanently closed." The 6-month AWS Free Plan ran out and the account was
+not moved to a Paid Plan. Every send therefore answers
+`UnrecognizedClientException` — "The security token included in the request is
+invalid". Nothing is wrong with our code; the keys in `backend/.env` are intact
+and the right shape, but the account behind them no longer exists.
 
-**Owner task:** in AWS → IAM, check whether that access key still exists and is
-Active. If not, create a new key pair for the same user and replace
-`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in `backend/.env`. Nothing else
-changes — same account, same sandbox, same verified sender.
+**⏰ There is a deadline.** AWS allows reactivation only for a limited period
+(normally ~90 days from closure); after that the closure is permanent and the
+content is deleted. What would be lost:
+- `omarsec.com` domain verification + **DKIM** (the 3 CNAMEs in Cloudflare)
+- the two verified sandbox recipients
+- IAM user `mailhub-dev`
+
+**Owner task (not urgent, but do not let the window pass):** use the **AWS Support**
+link on that sign-in screen to request reactivation — it will likely ask for a card
+and a Paid Plan. Cost is negligible: SES is ~$0.10 per 1,000 emails, so dev testing
+is effectively $0; the free tier ending does **not** mean a big bill. Reactivating
+is preferred over a fresh account because it keeps the DKIM DNS work that is
+already done. Afterwards only `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in
+`backend/.env` need replacing.
+
+Reminder of where this is heading anyway: per the plan, real sending eventually
+moves to the **office AWS account** (us-east-1 + brand domains). The personal
+account is a practice sandbox — so if reactivation turns out to be a hassle, the
+honest answer is to wait for the office account rather than rebuild this one.
 
 It does not block feature work: auto-pause was verified end-to-end without SES
 (49/49 checks), and everything except the actual SES call can still be tested.
