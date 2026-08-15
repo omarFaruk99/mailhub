@@ -81,11 +81,12 @@ function canonical(value: string | null | undefined, options: string[]): string 
   return options.find((o) => o.toLowerCase() === v.toLowerCase()) ?? v;
 }
 
-// Why someone is blocked, in words the reader does not have to decode.
-const BLOCK_REASON: Record<string, string> = {
-  unsubscribe: "they unsubscribed",
-  bounce: "their address did not work",
-  complaint: "they marked an email as spam",
+// Why this contact is blocked, as a whole sentence rather than the raw database
+// word. It opens the warning, so it has to read as a statement on its own.
+const BLOCKED_HEADLINE: Record<string, string> = {
+  unsubscribe: "This contact unsubscribed.",
+  bounce: "This contact's email address did not work.",
+  complaint: "This contact marked an email as spam.",
 };
 
 type ContactForm = {
@@ -344,15 +345,12 @@ export default function ContactsPage() {
                 <Callout tone="warn" icon={<Lock className="size-4" />}>
                   {blockKnown ? (
                     <>
-                      <strong>
-                        This contact will not receive emails ({BLOCK_REASON[blockedBy.get(editing.email) ?? ""] ?? "they are blocked"}).
-                      </strong>
+                      <strong>{BLOCKED_HEADLINE[blockedBy.get(editing.email) ?? ""] ?? "This contact is blocked."}</strong>
                       <br />
-                      We block emails by address, not by person. So the email address cannot be
-                      changed here — a new address would not be blocked, and emails would start
-                      going to them again.
+                      If you change their email address, they will start receiving emails again.
+                      That is why this field is locked.
                       <br />
-                      Is the address wrong? Delete this contact, then add the correct address.
+                      Wrong address? Delete this contact and add the correct one.
                     </>
                   ) : suppressions.isError ? (
                     // Without a retry this stays locked forever on a temporary

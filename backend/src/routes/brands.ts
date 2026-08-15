@@ -182,10 +182,12 @@ router.put("/contacts/:id", async (req, res) => {
       });
       if (suppressed) {
         return res.status(409).json({
+          // Same words as the dialog that normally prevents this, so a user who
+          // reaches it another way is not told a second, different story.
           error:
-            `This contact will not receive emails (${suppressed.reason}). We block emails by ` +
-            `address, not by person, so the address cannot be changed — a new address would not ` +
-            `be blocked. If the address is wrong, delete this contact and add the correct one.`,
+            `This contact is blocked (${suppressed.reason}). If you change their email address, ` +
+            `they will start receiving emails again. Wrong address? Delete this contact and add ` +
+            `the correct one.`,
         });
       }
       data.email = email;
