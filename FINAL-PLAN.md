@@ -260,6 +260,13 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 - **Exactly-once sending**
 - বেসিক open/click tracking
 
+**Phase 1.5 — দৈনন্দিন ব্যবহারের কাজ** ✅ **সম্পন্ন** (PR #14)
+- Campaign ও Contact **edit/delete** (আগে বানানোর পর বদলানোই যেত না)
+- নিয়ম: **কেউ মেইল পেয়ে গেলে** campaign-এর subject/লেখা আর বদলানো যায় না; নাম বদলানো যায়
+- Contact-এর **status** কখনো হাতে বদলানো যায় না; unsubscribe করা কারো **ঠিকানাও** নয়
+- Contact মুছলেও তার **block থেকে যায়** (নইলে delete-ই unsubscribe বাতিলের উপায় হতো)
+- Plan ও Country এখন **তালিকা থেকে বাছাই** — `Paid`/`paid` আলাদা হয়ে filter ভাঙা বন্ধ
+
 **Phase 2 — Team ও পেশাদার রূপ**
 - Multi-team + RBAC role
 - Approval workflow

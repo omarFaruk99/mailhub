@@ -58,6 +58,30 @@ servers** — an orphaned Next.js process serves stale CSS/JS and looks like a b
 as the visual reference for new screens. Demo URLs are listed in **PROGRESS.md**
 (§ Concept demos). When building filters/templates/analytics etc., match that look.
 
+**Editing and deleting — the rules are policy, not implementation detail:**
+- **What may be edited is decided by whether an email REACHED anyone**, never by
+  `status` (they disagree in both directions — see PROGRESS.md). Once anyone has it,
+  a campaign's subject/html/category are frozen; the name stays editable. Duplicate
+  makes a new version.
+- **Contact `status` is never editable**, and a **suppressed contact's email address
+  cannot be changed** — suppression is keyed by address, so a rename would hand them
+  an unblocked identity. Fixing a typo = delete + add.
+- **Deleting a contact never deletes their Suppression row.** That row is what stops
+  a later CSV import from re-emailing someone who unsubscribed.
+- Deleting campaigns/contacts also removes the recipient rows behind **analytics and
+  the auto-pause denominator**. That is allowed, and the confirm dialogs say so.
+
+**Writing for this user in the UI:** short sentences, plain global English, and lead
+with the consequence rather than the mechanism ("If you change their email address,
+they will start receiving emails again" beat "we block by address, not by person").
+The user reads English as a second language and will say when a string is unclear —
+that feedback is about the wording, not the feature.
+
+**Free-text fields that feed send filters must be pickers.** Filters match exactly,
+so `Paid`/`paid` or `USA`/`United States` silently split one audience in two.
+Contacts' plan and country use `components/ui/combobox.tsx`; merge existing values
+case-insensitively so a dropdown never offers both spellings.
+
 **Styling — use theme tokens, not hardcoded colors.** Colors/fonts are design tokens in
 `frontend/src/app/globals.css` (change once → whole app; light/dark aware). Prefer the
 token classes: `text-foreground` / `text-muted-foreground`, `bg-primary` /
@@ -211,8 +235,12 @@ guides the user through each manual task.
   Keep these two levels distinct — do not "fix" the brake down to the target.
 - A pause is **per brand** and only a **person** can lift it. Never add auto-resume:
   it would restart the very send that caused the spike.
-- `/track/click` must only redirect to links found in the email **that recipient**
-  was sent. Anything looser is an open redirect on our own sending domain.
+- `/track/click` must only redirect to links found in the campaign **that recipient**
+  was sent. Anything looser is an open redirect on our own sending domain. Match
+  against the **stored** HTML (merge tags as wildcards), never a recipient's
+  personalized copy — that ties old links to the contact's current name and a rename
+  kills them. The **origin** is the boundary; do not tighten the wildcard to exclude
+  spaces or slashes (real names contain both).
 - Separate **transactional vs marketing** (ideally separate subdomains).
 - Handle bounces/complaints via SES→SNS webhook (verify SNS signature).
 - **Exactly-once sending** (no double emails on retry/crash).
