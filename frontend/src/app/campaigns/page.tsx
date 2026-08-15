@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useBrand } from "@/lib/use-brand";
+import { sendingStatusKey } from "@/lib/use-sending-status";
 import { PageHeader } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -53,12 +54,15 @@ export default function CampaignsPage() {
     onSuccess: (r) => {
       toast.success(
         r.recipientsDeleted > 0
-          ? `Campaign deleted — ${r.recipientsDeleted} send records removed with it`
+          ? `Campaign deleted, with ${r.recipientsDeleted} email records.`
           : "Campaign deleted"
       );
       qc.invalidateQueries({ queryKey: ["campaigns", brandId] });
-      // Its recipient rows were part of the numbers on those screens.
+      // Its recipient rows were part of the numbers on those screens — including
+      // auto-pause, which measures bounces against emails sent in the last week.
+      // Removing a campaign moves that denominator, so the banner has to re-read.
       qc.invalidateQueries({ queryKey: ["analytics", brandId] });
+      qc.invalidateQueries({ queryKey: sendingStatusKey(brandId) });
     },
     onError: (e: Error) => toast.error("Could not delete: " + e.message),
   });
@@ -72,6 +76,12 @@ export default function CampaignsPage() {
     },
     onSuccess: (c) => {
       toast.success("Duplicated as a new draft");
+      // Put the new campaign into the cache before navigating. Invalidating alone
+      // refetches in the background while the cached list still says "success", so
+      // the edit page would open, fail to find the campaign, and show "this campaign
+      // no longer exists" — on the copy just created. The list is newest-first, so
+      // the new draft belongs at the front.
+      qc.setQueryData<Campaign[]>(["campaigns", brandId], (old) => [c, ...(old ?? [])]);
       qc.invalidateQueries({ queryKey: ["campaigns", brandId] });
       router.push(`/campaigns/${c.id}/edit`);
     },
@@ -126,13 +136,13 @@ export default function CampaignsPage() {
                   // hundreds of send records, so keying off status would stay
                   // silent for exactly the campaigns with the most to lose.
                   const lines = [`Delete "${c.name}"?`];
-                  if (c.status === "scheduled") lines.push("It is scheduled — the scheduled send will be cancelled.");
+                  if (c.status === "scheduled") lines.push("This campaign is scheduled. The scheduled send will be cancelled.");
                   // Deleting send records removes them from the deliverability
-                  // maths too. Bounce/complaint records survive (they are keyed by
+                  // maths too. Bounce/complaint records survive (they are kept per
                   // address), so deleting a clean campaign leaves the same problems
                   // over a smaller total — which can read as a worse rate.
-                  lines.push("Any send history (who received it, opens and clicks) is deleted with it. The analytics and the sending-guard rates will change.");
-                  lines.push("This cannot be undone.");
+                  lines.push("This also deletes its email history: who received it, who opened it, and who clicked. Your analytics and the sending-guard numbers will change.");
+                  lines.push("You cannot undo this.");
                   if (confirm(lines.join("\n\n"))) delMut.mutate(c);
                 }}
               >

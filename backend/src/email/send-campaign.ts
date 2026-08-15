@@ -102,10 +102,13 @@ const MERGE_TAG = /\{\{\s*name\s*\}\}/gi;
  * host is, and that is what this refuses.
  */
 export function isCampaignLink(campaignHtml: string, url: string): boolean {
-  // Whitespace and control characters can never appear in a link we generated,
-  // and a CR/LF here would both slip past an anchored pattern and make
-  // res.redirect throw on an illegal header value.
-  if (/[\s\u0000-\u001f\u007f]/.test(url)) return false;
+  // Control characters only. A CR/LF would slip past an anchored pattern and make
+  // res.redirect throw on an illegal header value, so those are refused — but a
+  // plain SPACE has to be allowed: a contact called "John Smith" substituted into
+  // a link gives `.../u/John Smith`, and Express percent-encodes it on the way out.
+  // Rejecting whitespace broke every personalized link for anyone whose name has a
+  // space in it, which is most people.
+  if (/[\u0000-\u001f\u007f]/.test(url)) return false;
 
   let candidate: URL;
   try {
@@ -129,7 +132,13 @@ export function isCampaignLink(campaignHtml: string, url: string): boolean {
     }
     if (base.origin !== candidate.origin) continue;
 
-    const pattern = raw.split(MERGE_TAG).map(escapeRegex).join("\\S*");
+    // The substituted value may contain slashes and spaces — real names do
+    // ("R&D / Ops", "John Smith") — but never `?` or `#`. Excluding those two
+    // stops a query string or fragment being bolted onto the end, which is how a
+    // link would otherwise be turned into `…/u/x?next=<somewhere else>`. Together
+    // with the origin check above, a click can only ever land on a page of the
+    // site the campaign's author linked to.
+    const pattern = raw.split(MERGE_TAG).map(escapeRegex).join("[^?#]*");
     if (new RegExp(`^${pattern}$`).test(url)) return true;
   }
   return false;

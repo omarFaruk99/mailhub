@@ -79,8 +79,8 @@ router.put("/campaigns/:campaignId", async (req, res) => {
   ) {
     return res.status(409).json({
       error:
-        "Cancel the schedule before changing the category — the audience was frozen for the current one, " +
-        "and changing the category without re-picking the audience could send this to the wrong people.",
+        "Cancel the schedule first, then change the category. The audience was saved for the current " +
+        "category, so changing it now could send this email to the wrong people.",
     });
   }
   if (changesContent) {
@@ -94,9 +94,9 @@ router.put("/campaigns/:campaignId", async (req, res) => {
     if (delivered > 0) {
       return res.status(409).json({
         error:
-          `This campaign has already been delivered to ${delivered} ${delivered === 1 ? "person" : "people"}, ` +
-          `so its subject and content can no longer be changed. Duplicate it to make a new version. ` +
-          `(You can still rename it.)`,
+          `This campaign was already sent to ${delivered} ${delivered === 1 ? "person" : "people"}. ` +
+          `You cannot change the subject or the content. Use Duplicate to make a new version. ` +
+          `You can still change the name.`,
         delivered,
       });
     }

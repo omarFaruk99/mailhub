@@ -4,12 +4,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useBrand } from "@/lib/use-brand";
+import { sendingStatusKey } from "@/lib/use-sending-status";
+import { countryNames } from "@/lib/countries";
 import { PageHeader } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -39,34 +42,62 @@ const TYPES: { value: ContactType; label: string }[] = [
 // which is why this only shows up here.)
 const typeLabel = (v: unknown) => TYPES.find((t) => t.value === v)?.label ?? String(v ?? "");
 
+// The usual plans. Whatever a brand already uses is added to this at render time,
+// so switching to a dropdown never hides or rewrites existing data.
+const COMMON_PLANS = ["Free", "Trial", "Paid"];
+
+// Why someone is blocked, in words the reader does not have to decode.
+const BLOCK_REASON: Record<string, string> = {
+  unsubscribe: "they unsubscribed",
+  bounce: "their address did not work",
+  complaint: "they marked an email as spam",
+};
+
+type ContactForm = {
+  email: string;
+  name: string;
+  plan: string;
+  country: string;
+  type: ContactType;
+  company: string;
+};
+
+const EMPTY_FORM: ContactForm = { email: "", name: "", plan: "", country: "", type: "client", company: "" };
+
 export default function ContactsPage() {
   const { brand } = useBrand();
   const brandId = brand?.id;
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
-  const emptyForm = { email: "", name: "", plan: "", country: "", type: "client" as ContactType, company: "" };
-  const [form, setForm] = useState(emptyForm);
+  const [addOpen, setAddOpen] = useState(false);
+  const [form, setForm] = useState<ContactForm>(EMPTY_FORM);
   const [typeFilter, setTypeFilter] = useState<ContactType | "all">("all");
   // The contact being edited — null when the edit dialog is closed.
   const [editing, setEditing] = useState<Contact | null>(null);
-  const [editForm, setEditForm] = useState(emptyForm);
+  const [editForm, setEditForm] = useState<ContactForm>(EMPTY_FORM);
 
   const contacts = useQuery({ queryKey: ["contacts", brandId], queryFn: () => api.contacts(brandId!), enabled: !!brandId });
-  // Who we are forbidden to email. Their address cannot be edited: a new address
-  // would quietly undo the unsubscribe, since suppression is keyed by address.
+  // Who we must not email. Their address cannot be edited: a new address would
+  // quietly undo the unsubscribe, since the block is stored per address.
   const suppressions = useQuery({
     queryKey: ["suppressions", brandId],
     queryFn: () => api.suppressions(brandId!),
     enabled: !!brandId,
   });
-  const suppressedSet = new Set((suppressions.data ?? []).map((s) => s.email));
-  // Until we actually know, treat every address as locked. An empty set while the
+  const blockedBy = new Map((suppressions.data ?? []).map((s) => [s.email, s.reason]));
+  // Until we actually know, treat every address as locked. An empty map while the
   // query loads or fails would silently offer to edit the address of someone who
   // unsubscribed — the one change this screen must never make easy. (The backend
   // refuses it anyway; this keeps the UI from promising something it cannot do.)
-  const suppressionKnown = suppressions.isSuccess;
-  const emailLocked = (email: string) => !suppressionKnown || suppressedSet.has(email);
+  const blockKnown = suppressions.isSuccess;
+  const emailLocked = (email: string) => !blockKnown || blockedBy.has(email);
+
+  // Dropdown options: the usual values plus anything this brand already uses, so a
+  // country or plan typed before this screen existed stays selectable.
+  const rows = contacts.data ?? [];
+  const planOptions = [...new Set([...COMMON_PLANS, ...rows.map((c) => c.plan).filter(Boolean) as string[]])];
+  const countryOptions = [...new Set([...countryNames(), ...rows.map((c) => c.country).filter(Boolean) as string[]])]
+    .sort((a, b) => a.localeCompare(b));
 
   function openEdit(c: Contact) {
     setEditing(c);
@@ -79,6 +110,17 @@ export default function ContactsPage() {
       company: c.company ?? "",
     });
   }
+
+  const addMut = useMutation({
+    mutationFn: () => api.addContact(brandId!, form),
+    onSuccess: () => {
+      toast.success("Contact added");
+      setAddOpen(false);
+      setForm(EMPTY_FORM);
+      qc.invalidateQueries({ queryKey: ["contacts", brandId] });
+    },
+    onError: (e: Error) => toast.error("Could not add: " + e.message),
+  });
 
   const editMut = useMutation({
     mutationFn: () => api.updateContact(editing!.id, editForm),
@@ -95,29 +137,39 @@ export default function ContactsPage() {
     onSuccess: (r) => {
       toast.success(
         r.stillSuppressed
-          ? "Contact deleted — they stay on the do-not-send list"
+          ? "Contact deleted. They stay on the blocked list."
           : r.historyDeleted > 0
-            ? `Contact deleted — ${r.historyDeleted} send records removed with them`
+            ? `Contact deleted, with ${r.historyDeleted} email records.`
             : "Contact deleted"
       );
       qc.invalidateQueries({ queryKey: ["contacts", brandId] });
+      // Their recipient rows counted towards analytics and towards the auto-pause
+      // denominator, so both have to re-read after they are removed.
       qc.invalidateQueries({ queryKey: ["analytics", brandId] });
+      qc.invalidateQueries({ queryKey: sendingStatusKey(brandId) });
     },
     onError: (e: Error) => toast.error("Could not delete: " + e.message),
   });
 
-  const addMut = useMutation({
-    mutationFn: () => api.addContact(brandId!, form),
-    onSuccess: () => {
-      toast.success("Contact added");
-      setOpen(false);
-      setForm(emptyForm);
+  const importMut = useMutation({
+    mutationFn: (file: File) => api.importCsv(brandId!, file),
+    onSuccess: (r) => {
+      toast.success(`Imported: ${r.added} added, ${r.skipped} skipped`);
+      // A type the file used but we do not know was imported as "client" — and
+      // clients receive almost every category, so say it out loud instead of
+      // letting it show up later as mail to the wrong person.
+      if (r.unknownTypes?.length) {
+        toast.warning(
+          `We do not know the type ${r.unknownTypes.map((t) => `"${t}"`).join(", ")}. Those rows were added as "client". Fix the type column and import again, or edit them here.`,
+          { duration: 12_000 }
+        );
+      }
       qc.invalidateQueries({ queryKey: ["contacts", brandId] });
     },
-    onError: (e: Error) => toast.error("Could not add: " + e.message),
+    onError: () => toast.error("Import failed"),
   });
 
-  const shown = (contacts.data ?? []).filter((c) => typeFilter === "all" || c.type === typeFilter);
+  const shown = rows.filter((c) => typeFilter === "all" || c.type === typeFilter);
 
   // Shared contact column order/look (matches the send-page recipients table).
   const columns: Column<Contact>[] = [
@@ -145,13 +197,17 @@ export default function ContactsPage() {
             <DropdownMenuItem
               variant="destructive"
               onClick={() => {
-                // Two things worth saying out loud before they agree: the history
-                // goes, and (reassuringly) an unsubscribe does not.
+                // Two things worth saying before they agree: the history goes, and
+                // (reassuringly) a block does not.
                 const parts = [`Delete ${c.email}?`];
-                if (suppressionKnown && suppressedSet.has(c.email)) {
-                  parts.push("They stay on the do-not-send list, so deleting them here does not start emails again.");
+                parts.push("This also deletes their email history: which emails they received, opened, and clicked. Your analytics and the sending-guard numbers will change.");
+                if (blockedBy.has(c.email)) {
+                  // Worth spelling out both halves: the block survives, but the
+                  // bounce/complaint behind it stops counting towards the guard —
+                  // which is the honest description of "cleaning the list".
+                  parts.push("They stay on the blocked list, so they will not receive emails even if you add them again.");
                 }
-                parts.push("Their send history (opens and clicks) will be deleted too. This cannot be undone.");
+                parts.push("You cannot undo this.");
                 if (confirm(parts.join("\n\n"))) delMut.mutate(c);
               }}
             >
@@ -162,24 +218,6 @@ export default function ContactsPage() {
       ),
     },
   ];
-
-  const importMut = useMutation({
-    mutationFn: (file: File) => api.importCsv(brandId!, file),
-    onSuccess: (r) => {
-      toast.success(`Imported: ${r.added} added, ${r.skipped} skipped`);
-      // A type the file used but we don't know was imported as "client" — and
-      // clients are in almost every category's default audience, so say it out
-      // loud instead of letting it show up later as mail to the wrong person.
-      if (r.unknownTypes?.length) {
-        toast.warning(
-          `Unknown contact type ${r.unknownTypes.map((t) => `"${t}"`).join(", ")} — those rows were imported as "client". Fix the type column and re-import, or edit them.`,
-          { duration: 12_000 }
-        );
-      }
-      qc.invalidateQueries({ queryKey: ["contacts", brandId] });
-    },
-    onError: () => toast.error("Import failed"),
-  });
 
   return (
     <>
@@ -195,45 +233,7 @@ export default function ContactsPage() {
             <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={!brandId || importMut.isPending}>
               <Upload className="size-4" /> Import CSV
             </Button>
-            <Button disabled={!brandId} onClick={() => setOpen(true)}><Plus className="size-4" /> Add contact</Button>
-            <Dialog open={open} onOpenChange={setOpen}>
-              <DialogContent>
-                <DialogHeader><DialogTitle>Add contact</DialogTitle></DialogHeader>
-                <div className="flex flex-col gap-4 py-2">
-                  <Field label="Email"><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@example.com" /></Field>
-                  <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="Type">
-                      <Select
-                        value={form.type}
-                        onValueChange={(v) => {
-                          const t = (v ?? form.type) as ContactType;
-                          // internal (our colleagues) never carry a company → clear it.
-                          setForm({ ...form, type: t, company: t === "internal" ? "" : form.company });
-                        }}
-                      >
-                        <SelectTrigger className="w-full"><SelectValue>{typeLabel}</SelectValue></SelectTrigger>
-                        <SelectContent>
-                          {TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field label="Company">
-                      <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })}
-                        placeholder={form.type === "internal" ? "— (leave blank)" : "e.g. ABC Travel"}
-                        disabled={form.type === "internal"} />
-                    </Field>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="Plan"><Input value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} placeholder="Paid / Trial" /></Field>
-                    <Field label="Country"><Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} /></Field>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={() => addMut.mutate()} disabled={!form.email || addMut.isPending}>Add</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <Button disabled={!brandId} onClick={() => setAddOpen(true)}><Plus className="size-4" /> Add contact</Button>
           </div>
         }
       />
@@ -242,11 +242,11 @@ export default function ContactsPage() {
         {/* Type filter chips */}
         <div className="flex flex-wrap gap-2">
           <Chip active={typeFilter === "all"} onClick={() => setTypeFilter("all")}>
-            All ({contacts.data?.length ?? 0})
+            All ({rows.length})
           </Chip>
           {TYPES.map((t) => (
             <Chip key={t.value} active={typeFilter === t.value} onClick={() => setTypeFilter(t.value)}>
-              {t.label} ({(contacts.data ?? []).filter((c) => c.type === t.value).length})
+              {t.label} ({rows.filter((c) => c.type === t.value).length})
             </Chip>
           ))}
         </div>
@@ -259,94 +259,79 @@ export default function ContactsPage() {
               columns={columns}
               rows={shown}
               rowKey={(c) => c.id}
-              empty={contacts.data?.length ? "No contacts of this type." : "No contacts yet. Add one or import a CSV."}
+              empty={rows.length ? "No contacts of this type." : "No contacts yet. Add one or import a CSV."}
             />
           </CardContent>
         </Card>
       </div>
 
-      {/* Edit one contact. Same fields as Add, minus status — status records what the
-          PERSON did (unsubscribed, bounced, complained) and must never be typed over. */}
+      {/* ---- Add ---- */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add contact</DialogTitle>
+            <DialogDescription>Add one person to this brand&apos;s contact list.</DialogDescription>
+          </DialogHeader>
+          <ContactFields
+            form={form}
+            setForm={setForm}
+            planOptions={planOptions}
+            countryOptions={countryOptions}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={() => addMut.mutate()} disabled={!form.email || addMut.isPending}>
+              {addMut.isPending ? "Adding…" : "Add contact"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ---- Edit ---- */}
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit contact</DialogTitle>
             <DialogDescription>
-              Status is set by what the contact did, so it is not editable here.
+              Status updates on its own, so you cannot change it here.
             </DialogDescription>
           </DialogHeader>
           {editing && (
-            <div className="flex flex-col gap-4 py-2">
+            <>
               {emailLocked(editing.email) && (
                 <Callout tone="warn" icon={<Lock className="size-4" />}>
-                  {suppressionKnown ? (
+                  {blockKnown ? (
                     <>
-                      This address is on the do-not-send list, so it cannot be changed — a new
-                      address would quietly bring them back into the audience. If it was simply
-                      mistyped, delete this contact and add the correct one.
+                      This contact will not receive emails ({BLOCK_REASON[blockedBy.get(editing.email) ?? ""] ?? "they are blocked"}).
+                      Their email address is locked, because a new address would start sending to them again.
+                      If the address is wrong, delete this contact and add a new one.
                     </>
                   ) : suppressions.isError ? (
                     // Without a retry this stays locked forever on a temporary
-                    // network blip, with no way out of the dialog but Cancel.
+                    // network problem, with no way out of the dialog but Cancel.
                     <>
-                      Could not load the do-not-send list, so the address stays locked — changing it
-                      blindly could undo someone&apos;s unsubscribe.{" "}
+                      We could not load the blocked list, so the email address stays locked.{" "}
                       <button onClick={() => suppressions.refetch()} className="underline">Try again</button>
                     </>
                   ) : (
-                    <>Checking the do-not-send list — the address stays locked until we know.</>
+                    <>Checking the blocked list. The email address stays locked until this finishes.</>
                   )}
                 </Callout>
               )}
-              <Field label="Email">
-                <Input
-                  value={editForm.email}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  disabled={emailLocked(editing.email)}
-                />
-              </Field>
-              <Field label="Name">
-                <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
-              </Field>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Type">
-                  <Select
-                    value={editForm.type}
-                    onValueChange={(v) => {
-                      const t = (v ?? editForm.type) as ContactType;
-                      // internal (our colleagues) never carry a company → clear it.
-                      setEditForm({ ...editForm, type: t, company: t === "internal" ? "" : editForm.company });
-                    }}
-                  >
-                    <SelectTrigger className="w-full"><SelectValue>{typeLabel}</SelectValue></SelectTrigger>
-                    <SelectContent>
-                      {TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Company">
-                  <Input
-                    value={editForm.company}
-                    onChange={(e) => setEditForm({ ...editForm, company: e.target.value })}
-                    placeholder={editForm.type === "internal" ? "— (leave blank)" : "e.g. ABC Travel"}
-                    disabled={editForm.type === "internal"}
-                  />
-                </Field>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Plan">
-                  <Input value={editForm.plan} onChange={(e) => setEditForm({ ...editForm, plan: e.target.value })} />
-                </Field>
-                <Field label="Country">
-                  <Input value={editForm.country} onChange={(e) => setEditForm({ ...editForm, country: e.target.value })} />
-                </Field>
-              </div>
-            </div>
+              <ContactFields
+                form={editForm}
+                setForm={setEditForm}
+                planOptions={planOptions}
+                countryOptions={countryOptions}
+                emailDisabled={emailLocked(editing.email)}
+                status={editing.status}
+              />
+            </>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
             <Button onClick={() => editMut.mutate()} disabled={!editForm.email || editMut.isPending}>
-              {editMut.isPending ? "Saving…" : "Save"}
+              {editMut.isPending ? "Saving…" : "Save changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -355,11 +340,122 @@ export default function ContactsPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * The contact fields, shared by Add and Edit so the two can never drift apart.
+ *
+ * Two columns on anything wider than a phone: six stacked fields made a tall,
+ * narrow column that pushed the buttons off small laptop screens.
+ */
+function ContactFields({
+  form, setForm, planOptions, countryOptions, emailDisabled, status,
+}: {
+  form: ContactForm;
+  setForm: (f: ContactForm) => void;
+  planOptions: string[];
+  countryOptions: string[];
+  emailDisabled?: boolean;
+  status?: string;
+}) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label>{label}</Label>
+    <div className="grid gap-x-4 gap-y-4 py-1 sm:grid-cols-2">
+      <Field label="Email address" required className={status ? undefined : "sm:col-span-2"}>
+        <Input
+          type="email"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          placeholder="name@company.com"
+          disabled={emailDisabled}
+        />
+      </Field>
+
+      {/* Read-only, and only when editing: it answers "why can I not change this?"
+          right where the question comes up. */}
+      {status && (
+        <Field label="Status" hint="Set by what the contact did">
+          <div className="flex h-9 items-center">
+            <StatusBadge status={status} />
+          </div>
+        </Field>
+      )}
+
+      <Field label="Full name">
+        <Input
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          placeholder="Jane Smith"
+        />
+      </Field>
+
+      <Field label="Type" hint="Decides which emails they receive">
+        <Select
+          value={form.type}
+          onValueChange={(v) => {
+            const t = (v ?? form.type) as ContactType;
+            // Internal people are our own colleagues, so they have no company.
+            setForm({ ...form, type: t, company: t === "internal" ? "" : form.company });
+          }}
+        >
+          <SelectTrigger className="h-9 w-full"><SelectValue>{typeLabel}</SelectValue></SelectTrigger>
+          <SelectContent>
+            {TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </Field>
+
+      <Field
+        label="Company"
+        hint={form.type === "internal" ? "Not used for internal people" : "Used to filter who receives an email"}
+      >
+        <Input
+          value={form.company}
+          onChange={(e) => setForm({ ...form, company: e.target.value })}
+          placeholder={form.type === "internal" ? "—" : "ABC Travel"}
+          disabled={form.type === "internal"}
+        />
+      </Field>
+
+      <Field label="Plan">
+        {/* A dropdown, not free text: send filters match exactly, so one contact
+            typed "paid" and another "Paid" would land in different audiences. */}
+        <Combobox
+          value={form.plan}
+          onChange={(v) => setForm({ ...form, plan: v })}
+          options={planOptions}
+          placeholder="No plan"
+          clearLabel="No plan"
+          searchPlaceholder="Search plans…"
+        />
+      </Field>
+
+      <Field label="Country">
+        <Combobox
+          value={form.country}
+          onChange={(v) => setForm({ ...form, country: v })}
+          options={countryOptions}
+          placeholder="No country"
+          clearLabel="No country"
+          searchPlaceholder="Search countries…"
+          emptyText="No country matches."
+        />
+      </Field>
+    </div>
+  );
+}
+
+function Field({
+  label, hint, required, className, children,
+}: {
+  label: string;
+  hint?: string;
+  required?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`flex flex-col gap-1.5 ${className ?? ""}`}>
+      <Label required={required}>{label}</Label>
       {children}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }

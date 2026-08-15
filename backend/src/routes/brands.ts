@@ -183,9 +183,9 @@ router.put("/contacts/:id", async (req, res) => {
       if (suppressed) {
         return res.status(409).json({
           error:
-            `This address is on the do-not-send list (${suppressed.reason}), so it cannot be changed — ` +
-            `a new address would quietly bring them back into the audience. ` +
-            `If the address was simply mistyped, delete this contact and add the correct one.`,
+            `This contact is on the blocked list (${suppressed.reason}). You cannot change their ` +
+            `email address, because a new address would start sending to them again. ` +
+            `If the address is wrong, delete this contact and add a new one.`,
         });
       }
       data.email = email;
@@ -196,7 +196,7 @@ router.put("/contacts/:id", async (req, res) => {
     const updated = await prisma.contact.update({ where: { id: contact.id }, data });
     res.json(updated);
   } catch (e: any) {
-    if (e.code === "P2002") return res.status(409).json({ error: "another contact in this brand already uses that email" });
+    if (e.code === "P2002") return res.status(409).json({ error: "Another contact already uses that email address." });
     throw e;
   }
 });

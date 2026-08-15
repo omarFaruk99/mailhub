@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -44,8 +45,18 @@ export default function EditCampaignPage() {
   // show every field editable for a second on a delivered campaign, and let
   // someone rewrite a long body only to lose it to a 409 on save.
   const countKnown = recipients.isSuccess;
-  const contentLocked = !countKnown || delivered > 0;
+  // Nothing may be typed before the campaign itself has loaded: the fields would
+  // start empty, and anything typed into that gap would look like a deliberate
+  // edit and overwrite the real body on save.
+  const loaded = !!campaign;
+  const contentLocked = !loaded || !countKnown || delivered > 0;
   const isSending = campaign?.status === "sending";
+  // The audience was frozen for the current category when the send was scheduled,
+  // so the backend refuses a category change until the schedule is cancelled.
+  // Disable it here too — all changed fields go in one request, so a rejected
+  // category would take an unrelated name fix down with it.
+  const categoryLocked = contentLocked || campaign?.status === "scheduled";
+  const notFound = campaigns.isSuccess && !campaign;
 
   // Each field is an override: null means "show what is saved". Deriving instead of
   // copying into state on load means a refetch never overwrites what you are typing.
@@ -103,31 +114,37 @@ export default function EditCampaignPage() {
 
       <div className="grid w-full flex-1 grid-cols-1 gap-6 p-6 lg:grid-cols-[minmax(0,460px)_1fr]">
         <div className="flex flex-col gap-4">
-          {isSending && (
-            <Callout tone="warn" icon={<Lock className="size-4" />}>
-              This campaign is being sent right now, so nothing can be changed until it finishes.
+          {notFound && (
+            <Callout tone="danger" icon={<Lock className="size-4" />}>
+              This campaign no longer exists. It may have been deleted, or it belongs to another
+              brand. <Link href="/campaigns" className="underline">Back to campaigns</Link>
             </Callout>
           )}
 
-          {!isSending && contentLocked && (
+          {isSending && (
+            <Callout tone="warn" icon={<Lock className="size-4" />}>
+              This campaign is sending right now. You cannot change anything until it finishes.
+            </Callout>
+          )}
+
+          {!isSending && !notFound && contentLocked && (
             <Callout tone="warn" icon={<Lock className="size-4" />}>
               {!countKnown ? (
                 recipients.isError ? (
                   <>
-                    <strong>Could not check whether this has already been sent.</strong> The subject
-                    and content stay locked until we can — editing an email people already have is
-                    not something to guess at.{" "}
+                    <strong>We could not check if this was already sent.</strong> The subject and
+                    content stay locked, to be safe.{" "}
                     <button onClick={() => recipients.refetch()} className="underline">Try again</button>
                   </>
                 ) : (
-                  <>Checking whether this has already been sent…</>
+                  <>Checking if this was already sent…</>
                 )
               ) : (
                 <>
-                  <strong>Already delivered to {delivered} {delivered === 1 ? "person" : "people"}.</strong>{" "}
-                  The subject and content are now fixed — their copy cannot be changed, and the links
-                  already sitting in their inbox point at this exact version. You can still rename it;
-                  to write a new version, duplicate it from the campaigns list.
+                  <strong>Already sent to {delivered} {delivered === 1 ? "person" : "people"}.</strong>{" "}
+                  You cannot change the subject or the content now, because the email is already in
+                  their inbox. You can still change the name. To make a new version, use{" "}
+                  <strong>Duplicate</strong> on the campaigns list.
                 </>
               )}
             </Callout>
@@ -135,9 +152,9 @@ export default function EditCampaignPage() {
 
           <div className="flex flex-col gap-1.5">
             <Label required>Name (internal)</Label>
-            <Input value={name} onChange={(e) => setNameOv(e.target.value)} disabled={isSending} />
+            <Input value={name} onChange={(e) => setNameOv(e.target.value)} disabled={isSending || !loaded} />
             <p className="text-xs text-muted-foreground">
-              Only for finding it in this list — never shown to recipients.
+              Only you see this name. Recipients never see it.
             </p>
           </div>
 
@@ -146,13 +163,19 @@ export default function EditCampaignPage() {
             <Select
               value={category}
               onValueChange={(v) => setCategoryOv(v ?? category)}
-              disabled={isSending || contentLocked}
+              disabled={isSending || categoryLocked}
             >
               <SelectTrigger className="w-full"><SelectValue placeholder="Pick a category…" /></SelectTrigger>
               <SelectContent>
                 {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
+            {campaign?.status === "scheduled" && !contentLocked && (
+              <p className="text-xs text-muted-foreground">
+                Cancel the schedule to change the category. The audience was saved for the
+                current one.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
