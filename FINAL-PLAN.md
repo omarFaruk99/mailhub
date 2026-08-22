@@ -4,10 +4,6 @@
 > এক প্রতিষ্ঠান → অনেক brand/product → প্রতি brand-এ অনেক team।
 > বড় কোম্পানির (Mailchimp / HubSpot / SendGrid) মানের কাঠামো।
 >
-> 📧 **AWS SES-এ bulk mail সেটআপ → [AWS-SES-BULK-MAIL-GUIDE.md](AWS-SES-BULK-MAIL-GUIDE.md)**
-> — AWS account, domain verify, SPF/DKIM/DMARC, production access; ধাপে ধাপে,
-> developer না হলেও অনুসরণযোগ্য। এটা **সাধারণ গাইড**, আমাদের প্রজেক্টের ডায়েরি নয়।
->
 > 📌 **আমাদের নিজের SES অবস্থা (কোন account, কোন region, কোন domain verified) →
 > [PROGRESS.md](PROGRESS.md)।** পুরনো EMAIL-GUIDE.md মালিক ইচ্ছাকৃতভাবে মুছেছেন
 > (2026-08-22)। তার সাথে **WordPress → MailHub হস্তান্তরের checklist-ও চলে গেছে** —

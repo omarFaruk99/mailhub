@@ -2,11 +2,13 @@
 
 _Last updated: 2026-08-22 · Read this first in a new session._
 
-> 📧 **How to set up bulk mail on AWS SES → [AWS-SES-BULK-MAIL-GUIDE.md](AWS-SES-BULK-MAIL-GUIDE.md).**
-> A general click-by-click guide (account, domain, SPF/DKIM/DMARC, production
-> access) that a non-developer can follow. It replaced EMAIL-GUIDE.md, which the
-> owner deleted on purpose — that file had turned into a project diary, and this
-> file is where project status belongs. **Our own SES account facts are below.**
+> 📧 **AWS SES setup facts for our own account are in § "Office AWS SES account"
+> below.** A separate general, non-developer-friendly click-by-click guide
+> (AWS-SES-BULK-MAIL-GUIDE.md) existed for a while but was removed by the owner
+> (2026-08-22) to avoid two files both claiming to be authoritative on SES — this
+> file, and only this file, is where project status (including SES) belongs. It
+> had itself replaced an older EMAIL-GUIDE.md, deleted for the same reason: that
+> file had turned into a project diary.
 
 > 🎯 **Build the MVP, not the full version.** Owner, 2026-08-22: *"we are creating
 > MVP. if we create heavy from start then it make me overwhelming."* The smallest
