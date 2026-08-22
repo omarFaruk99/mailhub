@@ -54,6 +54,39 @@ they never asked for. Details: PROGRESS.md § 2026-08-22.
 one real customer — the company still runs its mail from WordPress. Deploying it
 beats anything else on the backlog. See PROGRESS.md § "Recommended next steps".
 
+## The other rule that outranks the rest: never leave backdated info
+
+Owner, 2026-08-22: *"always update backdated info … each time we face problems
+with old info."* Stale documentation has cost this project real time, repeatedly,
+and it is worse than missing documentation: nobody acts on a blank page, everybody
+acts on a confident sentence that stopped being true.
+
+**Before saying a piece of work is done, and before every PR, sweep the docs
+against the running system.** Not a skim — check the claims:
+
+- **Every factual claim you touched.** If the work changed a number, a file path,
+  a region, a status or a default, find the sentence that states the old one.
+  Today's sweep found: a send rate of "~5/sec" that measurement put at ~1.6/sec;
+  "always test in the SES sandbox first" when no sandbox exists any more; and a
+  comment naming the wrong file for the function it tells you to keep in sync.
+- **A section marked "superseded" is not handled.** PROGRESS.md had one whose
+  body still read in the present tense — "current setup = personal AWS SES in
+  sandbox", "a fake address shows Failed" — every clause false, the last one
+  dangerous. **Delete the misleading body**, keep the one sentence that explains
+  why past decisions were made.
+- **What you learned but nothing records.** Half of today's sweep was additions,
+  not corrections: which mailboxes the dev contacts are, why the old test data
+  had to go, that `.env` does not hot-reload. If a future session would have to
+  rediscover it, write it down.
+- **Absolute dates, never relative.** "Last week" is unreadable in three months.
+- **Say what is unverified.** If you could not check something — today the
+  browser was locked, so the pages were only confirmed to return 200, never seen
+  — write that next to the claim instead of implying it was tested.
+
+Keep CLAUDE.md, PROGRESS.md, FINAL-PLAN.md and README.md consistent with each
+other in the same pass; a link or claim repeated in four files goes stale in four
+places. The user should never be the one to notice.
+
 ## Current status (read first)
 **Phase 1 MVP is BUILT and working locally** — backend (Express + Prisma + PostgreSQL
 in Docker) and frontend (Next.js) both run. Verified end-to-end (14/14 checks) and
@@ -139,7 +172,8 @@ token classes: `text-foreground` / `text-muted-foreground`, `bg-primary` /
 deploy LAST", because SES production access was months away. It is not: the office
 account already has it. **The new sequence is SES cutover → deploy → one real send
 → leave WordPress → then ask what to build.** Feature work is on hold, including
-items that were "next" yesterday (segments, global search, Teams/RBAC, multi-brand).
+items that were "next" before 2026-08-22 (segments, global search, Teams/RBAC,
+multi-brand).
 Full list and reasoning: PROGRESS.md § "Recommended next steps".
 
 ## Run locally (quick)
