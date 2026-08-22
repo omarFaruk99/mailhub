@@ -96,6 +96,13 @@ light/dark). Details, exact "done vs next", and run commands are in **PROGRESS.m
 scheduled send survives a restart). **Auto-pause is now done too** — the last
 Phase 1 guardrail, and the one big tools have that we didn't.
 
+**Simple login is now done too (2026-08-22)** — email + password, added ahead of
+deploy because without it, anyone with the public URL would reach real customer
+data. This is a security prerequisite, not new "feature work" — it does not
+reopen the feature freeze below. It is deliberately not full RBAC (still
+deferred): one shared account type for now, `User.role` always `"admin"`.
+Details: PROGRESS.md § "Simple login".
+
 **⚠️ SES: the office account has arrived, and `.env` has not caught up.** As of
 2026-08-22 the office AWS key is in hand and verified: **us-east-1 has production
 access** (not sandbox, `HEALTHY`, 166,700/day) with `innovatesolution.com`,
@@ -176,6 +183,8 @@ Full list and reasoning: PROGRESS.md § "Recommended next steps".
 1. `docker compose up -d db`  (repo root — starts PostgreSQL)
 2. `cd backend && npm run dev`   → API at http://localhost:4000
 3. `cd frontend && npm run dev`  → UI at http://localhost:3000
+- The app requires login now. A fresh database has no accounts — seed one:
+  `cd backend && ADMIN_EMAIL=... ADMIN_PASSWORD=... npx tsx src/scripts/seed-admin.ts`.
 - View data: `cd backend && npm run prisma:studio`
 - Secrets live in `backend/.env` (SES keys, DATABASE_URL) — never commit `.env`.
 - **Daily work runs on the dev server** (`npm run dev`) — adding a feature/update does

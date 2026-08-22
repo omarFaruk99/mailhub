@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import authRouter from "./routes/auth.js";
 import brandsRouter from "./routes/brands.js";
 import emailRouter from "./routes/email.js";
 import campaignsRouter from "./routes/campaigns.js";
@@ -9,6 +10,7 @@ import trackingRouter from "./routes/tracking.js";
 import webhooksRouter from "./routes/webhooks.js";
 import analyticsRouter from "./routes/analytics.js";
 import { startQueue, stopQueue } from "./queue.js";
+import { requireAuth, isPublicPath } from "./auth/middleware.js";
 
 const app = express();
 app.use(cors()); // allow the frontend (localhost:3000) to call this API
@@ -18,6 +20,21 @@ app.use(express.json());
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "mailhub-backend" });
 });
+
+// Everything below needs a logged-in session, except the handful of paths an
+// outsider's browser or AWS reaches directly (tracking pixel/link,
+// unsubscribe, /auth/login, the SES→SNS webhook — see isPublicPath). This
+// gate runs BEFORE any router is mounted, authRouter included: a route
+// added to auth.ts later is protected by default unless it's added to
+// isPublicPath, rather than depending on every route remembering its own
+// requireAuth.
+app.use((req, res, next) => {
+  if (isPublicPath(req.path)) return next();
+  return requireAuth(req, res, next);
+});
+
+// Login/logout/me.
+app.use("/", authRouter);
 
 // Brand + contact routes.
 app.use("/", brandsRouter);
