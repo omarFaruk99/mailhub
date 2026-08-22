@@ -1,9 +1,13 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Send, LayoutTemplate, Search, Moon, ChevronsUpDown, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Users, Send, LayoutTemplate, Search, Moon, ChevronsUpDown, BarChart3, LogOut } from "lucide-react";
 import { useBrand } from "@/lib/use-brand";
+import { useAuthUser, useLogout } from "@/lib/use-auth";
 import { SendingPausedBanner } from "@/components/sending-paused-banner";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -17,6 +21,11 @@ const nav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { brand } = useBrand();
+  // AuthGate (the parent layout) already confirmed the session before
+  // rendering AppShell, so this "me" query is just cache it already filled.
+  const { data: user } = useAuthUser(true);
+  const logout = useLogout();
+  const initials = (user?.email || "?").slice(0, 2).toUpperCase();
 
   return (
     <div className="grid min-h-screen grid-cols-[256px_1fr]">
@@ -63,25 +72,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="mt-auto flex items-center gap-2.5 border-t pt-3">
-          <span
-            className="grid size-8 flex-none place-items-center rounded-full text-[11px] font-semibold text-white"
-            style={{ background: "var(--sidebar-primary)" }}
-          >
-            OF
-          </span>
-          <span className="min-w-0 leading-tight">
-            <span className="block truncate text-[12.5px] font-semibold">Omar Faruk</span>
-            <span className="block truncate text-[11px] text-muted-foreground">Brand Admin</span>
-          </span>
-          <button
-            aria-label="Toggle theme"
-            onClick={() => document.documentElement.classList.toggle("dark")}
-            className="ml-auto grid size-8 place-items-center rounded-lg border text-muted-foreground hover:bg-accent"
-          >
-            <Moon className="size-4" />
-          </button>
+        {/* Footer — same "workspace switcher" shape as the button up top, so the
+            two ends of the sidebar read as one visual language. */}
+        <div className="mt-auto border-t pt-3">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex w-full items-center gap-2.5 rounded-xl border border-transparent p-2 text-left outline-none transition-colors hover:bg-accent data-popup-open:bg-accent">
+              <span
+                className="grid size-8 flex-none place-items-center rounded-full text-[11px] font-semibold text-white"
+                style={{ background: "var(--sidebar-primary)" }}
+              >
+                {initials}
+              </span>
+              <span className="min-w-0 leading-tight">
+                <span className="block truncate text-[12.5px] font-semibold">{user?.email ?? "…"}</span>
+                <span className="block truncate text-[11px] text-muted-foreground capitalize">{user?.role ?? ""}</span>
+              </span>
+              <ChevronsUpDown className="ml-auto size-3.5 flex-none text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top" className="w-52">
+              <DropdownMenuItem onClick={() => document.documentElement.classList.toggle("dark")}>
+                <Moon className="size-4" /> Toggle theme
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => logout()}>
+                <LogOut className="size-4" /> Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
 

@@ -55,3 +55,6 @@ cd backend  && npm run dev       # API  → http://localhost:4000
 cd frontend && npm run dev       # UI   → http://localhost:3000
 cd backend  && npm run prisma:studio   # view/edit data
 ```
+
+The app now requires login — a fresh database has no accounts. See
+[PROGRESS.md](PROGRESS.md) § "Simple login" for the one-time setup command.

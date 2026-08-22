@@ -10,6 +10,36 @@ datasource db {
   provider = "postgresql"
 }
 
+// A staff account that can log into MailHub. Not a Contact (a Contact is
+// someone we EMAIL; a User is someone who USES the app). role is always
+// "admin" for now — full RBAC (Editor/Viewer/etc.) is a later phase, but the
+// table already has the field so that migration is additive, not a rewrite.
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("admin")
+  createdAt    DateTime @default(now())
+
+  sessions Session[]
+}
+
+// A logged-in session. The id itself is the bearer token the frontend holds
+// (in localStorage) and sends back as `Authorization: Bearer <id>` — no
+// separate token column needed. Stored in Postgres, not Redis, matching the
+// rest of this project (see pg-boss).
+model Session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  // Cascade: a session with no user is meaningless, and this is what lets a
+  // future "remove a staff account" feature delete a User without first
+  // hunting down and deleting their old sessions by hand.
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 // A brand = one product with its own clients & sender identity.
 model Brand {
   id        String    @id @default(uuid())

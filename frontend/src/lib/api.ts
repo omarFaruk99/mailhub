@@ -1,4 +1,6 @@
 // Small typed client for the MailHub backend.
+import { getToken, clearToken } from "./auth";
+
 export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export type Brand = { id: string; name: string; domain: string; createdAt: string };
@@ -159,9 +161,27 @@ export class ApiError extends Error {
   }
 }
 
+// Shared by every authenticated call, including the CSV upload below (which
+// can't go through req() since it sends FormData, not JSON).
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// The ONE place that reacts to "the session is gone" (logged out elsewhere,
+// or it expired) — a hard redirect, because every other page's queries would
+// otherwise fail one by one with no clear reason. Nothing else in the app
+// (AuthGate included) should duplicate this; it would just double-navigate.
+function handleUnauthorized(path: string) {
+  if (typeof window !== "undefined" && path !== "/auth/login") {
+    clearToken();
+    if (!window.location.pathname.startsWith("/login")) window.location.href = "/login";
+  }
+}
+
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(API + path, {
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     ...opts,
   });
   if (!r.ok) {
@@ -176,12 +196,23 @@ async function req<T>(path: string, opts?: RequestInit): Promise<T> {
       if (typeof e === "string") msg = e;
       else if (e) msg = JSON.stringify(e);
     } catch {}
+    if (r.status === 401) handleUnauthorized(path);
     throw new ApiError(msg, r.status, body);
   }
   return r.json();
 }
 
+export type AuthUser = { email: string; role: string };
+
 export const api = {
+  login: (email: string, password: string) =>
+    req<{ token: string; user: AuthUser }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  logout: () => req<void>("/auth/logout", { method: "POST" }),
+  me: () => req<{ user: AuthUser }>("/auth/me"),
+
   brands: () => req<Brand[]>("/brands"),
   createBrand: (b: { name: string; domain: string }) =>
     req<Brand>("/brands", { method: "POST", body: JSON.stringify(b) }),
@@ -202,8 +233,12 @@ export const api = {
   importCsv: async (brandId: string, file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    const r = await fetch(`${API}/brands/${brandId}/contacts/import`, { method: "POST", body: fd });
-    if (!r.ok) throw new Error("import failed");
+    const path = `/brands/${brandId}/contacts/import`;
+    const r = await fetch(`${API}${path}`, { method: "POST", headers: authHeaders(), body: fd });
+    if (!r.ok) {
+      if (r.status === 401) handleUnauthorized(path);
+      throw new Error("import failed");
+    }
     return r.json() as Promise<{
       received: number;
       added: number;

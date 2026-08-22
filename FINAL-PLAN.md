@@ -78,6 +78,11 @@ Organization (আপনার প্রতিষ্ঠান)
 
 ## ৪. Role ও Permission (বড় কোম্পানি যেভাবে করে — RBAC)
 
+> ✅ **২০২৬-০৮-২২: Simple login হয়ে গেছে** (email + password, সবাই `role=admin`) —
+> deploy-এর আগে একটা security প্রয়োজন ছিল, feature কাজ না। বিস্তারিত:
+> PROGRESS.md § "Simple login". `User` টেবিলে `role` ফিল্ড **এখনই আছে**, তাই নিচের
+> পুরো RBAC পরে বানালে এই টেবিল থেকেই শুরু হবে — নতুন করে User বানাতে হবে না।
+
 | Role | কী পারে |
 |------|---------|
 | **Org Admin** (super) | সব brand, সব কিছু নিয়ন্ত্রণ |

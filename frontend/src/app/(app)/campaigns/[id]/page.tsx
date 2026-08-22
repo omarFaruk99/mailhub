@@ -203,6 +203,17 @@ function CampaignSend() {
   const [atOverride, setAtOverride] = useState<string | null>(null);
   const [tzOverride, setTzOverride] = useState<string | null>(null);
   const [tzList] = useState(() => timezoneOptions());
+  // "Now", kept in state instead of read straight in render: calling Date.now()
+  // during render is impure (same render could run twice and disagree), which
+  // is exactly what React's purity lint (react-hooks/purity) catches. A plain
+  // mount-time value would go stale on a page left open for a while, so a
+  // slow interval nudges it forward — no need for second-level freshness on a
+  // "minimum 2 minutes out" scheduling bound.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   // The recipients poll and the campaign poll are two independent 15s timers, so
   // whichever fires last decides whether the table ever gets its final rows. Pull
@@ -285,9 +296,6 @@ function CampaignSend() {
   const isScheduled = campaign?.status === "scheduled";
   const whenMode = whenOverride ?? (isScheduled ? "later" : "now");
   const timezone = tzOverride ?? campaign?.timezone ?? browserTimezone();
-  // Read "now" on each render rather than freezing it at mount: on a page left
-  // open for an hour, a frozen suggestion would already be in the past.
-  const nowMs = Date.now();
   // Both are wall clock IN `timezone`, so switching zone moves the suggestion
   // with it instead of leaving a time that is already past there.
   const minAt = zoneInputValue(nowMs, 2, timezone);

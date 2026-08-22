@@ -236,7 +236,7 @@ real emails delivered via Amazon SES.
 Brand (now with the auto-pause fields `sendingPaused` / `pausedAt` / `pauseReason` /
 `pausedBy`), Contact (now with `type` + `company`), Campaign (now with the scheduling
 fields + `lastError`), CampaignRecipient, Suppression (now with `lastEventAt`),
-Template.
+Template, **User** (login accounts — see § "Simple login"), **Session**.
 (Migrations in `backend/prisma/migrations/`.)
 
 ### Defaults the system applies (know these before changing behaviour)
@@ -302,6 +302,9 @@ What is in the dev database now:
 1. `docker compose up -d db`
 2. `cd backend && npm run dev`   (http://localhost:4000)
 3. `cd frontend && npm run dev`  (http://localhost:3000)
+- **The app now requires login.** A fresh database has no accounts — create one:
+  `cd backend && ADMIN_EMAIL=you@innovatesolution.com ADMIN_PASSWORD='...' npx tsx src/scripts/seed-admin.ts`.
+  Re-running it with the same email resets that password. See § "Simple login".
 - Prisma Studio: `cd backend && npm run prisma:studio`
 - **There are TWO `.env` files, and they are not interchangeable.** The one at the
   repo root is read by **docker-compose** (`DB_USER` / `DB_PASSWORD` / `DB_NAME`);
@@ -437,6 +440,95 @@ uniquely indexed per brand so two segments can never select the same people. Thr
 - **When to revive:** the day a send goes to Paid-only, one country, or one
   company. Until then, adding it back is the opposite of MVP.
 
+## ✅ Simple login — added 2026-08-22
+
+Owner asked for login **before** deploy: once the app is on a public URL, no
+login means anyone with the link can read contacts and send campaigns. Not a
+feature — a prerequisite for step 2 below.
+
+- **Email + password**, not "sign in with Google" — this is a 2–3-person
+  internal tool, and Google sign-in needs a stable public URL for its
+  callback, which doesn't exist until *after* deploy. Google sign-in can be
+  **added later** without a rewrite (same `User` row, just another way in);
+  the owner asked for this explicitly and it's not on the backlog yet.
+- One shared account type for now — `User.role` is always `"admin"`. Full
+  RBAC (Editor/Viewer/etc., FINAL-PLAN.md §4) is deferred, same as before;
+  the field already exists so that later work is additive, not a rewrite.
+- **How it works:** password hashed with bcrypt (`bcryptjs`). Login creates a
+  `Session` row in Postgres (not Redis — matches pg-boss) and returns its id
+  as a bearer token; the frontend keeps it in `localStorage` and sends
+  `Authorization: Bearer <token>` on every API call
+  (`frontend/src/lib/api.ts`). Sessions last 30 days. **Every backend route
+  requires a valid session except** `/health`, `/track/*`, `/unsubscribe`,
+  `/webhooks/ses`, `/auth/login` — the paths an outsider's browser or AWS
+  hits directly, listed in `backend/src/auth/middleware.ts`'s
+  `isPublicPath`. That gate runs **before** any router is mounted, so a new
+  route is protected by default unless someone deliberately adds it to that
+  list.
+- **No accounts ship in git** (the seed script reads `ADMIN_EMAIL` /
+  `ADMIN_PASSWORD` from the environment, never hardcodes a password — see
+  "Run locally" above). The owner's own login was created once, by hand, the
+  same way; to add a teammate, run the seed script again with their details.
+  **Re-running it for an existing email also signs out every session on that
+  account** (found in `/code-review` 2026-08-22) — the whole point of
+  resetting a password is a stolen token stops working, so the old sessions
+  cannot survive the reset.
+- **`POST /auth/login` is rate-limited**: 10 attempts per IP per 15 minutes
+  (`express-rate-limit`, `backend/src/routes/auth.ts`) — added after
+  `/code-review` flagged that deploy (the very next step) puts this on a
+  public URL with one known admin email and no limit on password guesses.
+  **Deploy must set `app.set("trust proxy", ...)` to the real hop count once
+  nginx is in front of it**, or every request looks like it comes from the
+  proxy and shares one bucket.
+- Frontend: pages live under `app/(app)/` and are wrapped in `AuthGate`,
+  which sends a browser with no token to `/login`. That's a UX convenience,
+  **not** the real security boundary — the backend gate above is. A session
+  that turns out to be invalid (expired/revoked) is handled in exactly one
+  place, `api.ts`'s `req()`, which clears the token and redirects; nothing
+  else should duplicate that, or a network hiccup (backend restarting) gets
+  misread as "log this person out." When the backend really is unreachable
+  (not a 401 — a network error), `AuthGate` shows "Can't reach the server.
+  Retrying…" and polls every 5s instead of sitting on a blank screen forever
+  (also a `/code-review` find, 2026-08-22).
+- **Login page redesigned (2026-08-22)** to a more finished look: "MailHub"
+  wordmark + "Welcome back" heading, mail/lock icons inside the Email/Password
+  fields (same pattern as the recipient search box), a soft violet decorative
+  shape bottom-left, generous bottom padding under the button. Wrong
+  credentials show an **inline red `Callout`** (not a toast, which fades
+  after a few seconds) plus a red `aria-invalid` ring on both fields — same
+  danger-callout component used elsewhere (e.g. `campaigns/[id]/edit`'s
+  "campaign not found" notice). **Has a show/hide password toggle** (eye
+  icon). The button stayed the app's normal black `Button` (not blue) —
+  matches every other primary action in the app; changing that would be a
+  whole-app decision, not a login-page one.
+- **The email field's focus ring looks blue-violet — that's `--ring` in
+  `globals.css` (`oklch(0.52 0.19 288)`), the same ring every input in the
+  app already uses on focus** (Contacts, Campaigns, Templates forms), not
+  something new added for login. Asked the owner 2026-08-22 whether to
+  change it — **keep as-is**, for consistency across the whole app.
+- **Theme toggle + Log out moved into a dropdown** on the sidebar's user row
+  (`frontend/src/components/app-shell.tsx`), opening upward — same visual
+  pattern as the workspace switcher at the top of the sidebar, and the same
+  `DropdownMenu` component used for row actions elsewhere (Contacts,
+  Campaigns, Templates). Two bare always-visible icon buttons read as
+  cluttered next to that pattern; a menu on click is the more standard shape
+  for "account settings + sign out" in this style of app.
+- Verified in-browser (Playwright): login → dashboard → navigate → open user
+  menu → logout → direct URL after logout bounces to `/login` → wrong
+  password shows the inline red error and does not log in → session survives
+  a hard page reload → show/hide password toggle reveals the typed value.
+- **Pre-existing lint error found and fixed (2026-08-22), unrelated to login:**
+  `frontend/src/app/(app)/campaigns/[id]/page.tsx` called `Date.now()` directly
+  in render to keep its scheduling-time suggestion fresh — flagged by
+  `react-hooks/purity` (impure call during render), which would have failed
+  `next build`. Fixed by moving it into `useState` + a 30s `setInterval` in a
+  `useEffect`; the "don't freeze the suggestion at mount" behaviour is
+  unchanged. `npx eslint .` and `npx tsc --noEmit` are both clean across the
+  frontend as of this fix — not re-verified with a real `next build` yet
+  (the dev server was running; building alongside it corrupts `.next` — see
+  "Run locally"). Confirm with an actual `next build` once dev is stopped,
+  before or during step 3 (Deploy) below.
+
 ## ▶️ Recommended next steps (in order) — REORDERED 2026-08-22
 
 **Stop building features. Ship what exists.**
@@ -450,13 +542,18 @@ away") **stopped being true today**: the office account already has it.
 
 1. ~~**SES cutover**~~ ✅ **done 2026-08-22** — office key, `us-east-1`,
    `no-reply@innovatesolution.com`, and a real campaign delivered to four inboxes.
-2. **Deploy** — docker-compose (add backend + frontend services) + nginx + SSL on
+2. ~~**Login**~~ ✅ **done 2026-08-22** — email + password, added ahead of this list
+   because deploy without it means anyone with the URL reaches real customer data.
+   See § "Simple login".
+3. **Deploy** — docker-compose (add backend + frontend services) + nginx + SSL on
    the company Linux server. `PUBLIC_URL` **must** be the real outside URL, or every
-   unsubscribe / open / click link ships broken to real customers.
-3. **One real send** — small and deliberate (10–20 people), from the deployed app.
+   unsubscribe / open / click link ships broken to real customers. Run a real
+   `next build` early in this step to confirm the lint fix in § "Simple login"
+   actually holds (only checked with `eslint`/`tsc` so far, not a real build).
+4. **One real send** — small and deliberate (10–20 people), from the deployed app.
    This is the finish line the whole project was for.
-4. **Leave WordPress** — once step 3 works twice, move the real list over.
-5. **Then, and only then, ask what to build next.** After a real send the answer
+5. **Leave WordPress** — once step 4 works twice, move the real list over.
+6. **Then, and only then, ask what to build next.** After a real send the answer
    comes from use, not from guessing. The likeliest real gap is that **nobody at the
    company can write an email without writing HTML** — a no-code editor beats every
    other backlog item on that evidence, but wait for the evidence.
