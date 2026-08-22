@@ -11,13 +11,9 @@ new features, and promotions to clients of several separate products/brands
 
 Full plan: **[FINAL-PLAN.md](FINAL-PLAN.md)** — read it before doing design work.
 Beginner glossary (Bangla): **[GLOSSARY.md](GLOSSARY.md)**.
-The general, non-developer-friendly AWS-SES-BULK-MAIL-GUIDE.md was removed
-(2026-08-22, owner's call) — it had drifted from a general guide into a mix of
-project-specific facts, and the owner didn't want two places (this file plus
-PROGRESS.md) claiming to be authoritative on our SES setup. **Answer SES/
-deliverability questions from PROGRESS.md § "Office AWS SES account"**, which
-was already the source of truth for our actual account facts; that file had
-also replaced the older EMAIL-GUIDE.md, which the owner deleted on purpose
+**Answer SES/deliverability questions from PROGRESS.md § "Office AWS SES
+account"** — that is the source of truth for our actual account facts. It
+replaced the older EMAIL-GUIDE.md, which the owner deleted on purpose
 (2026-08-22) because it had become a project diary.
 Current build status + how to run: **[PROGRESS.md](PROGRESS.md)** — read this at the
 start of a new session to know exactly what already works and what's next.
