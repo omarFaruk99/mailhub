@@ -173,10 +173,22 @@ router.get("/campaigns/:campaignId/recipients", async (req, res) => {
 
 // ---- Send a campaign (broadcast with filter) ----
 // Optional filter in body: { plan, country, company, includeTypes }
+//
+// A text filter must be either absent or a real value. Present-but-blank is
+// refused rather than ignored, because ignoring it WIDENS the send: the matcher
+// treats blank as "any", so a caller who meant "only this plan" and sent " " by
+// accident would email the entire brand. Refusing costs a 400; guessing costs
+// hundreds of wrong emails that cannot be recalled. The UI never sends a blank
+// value — it omits the key — so nothing on screen can trip this.
+const textFilter = z
+  .string()
+  .refine((v) => v.trim().length > 0, "Leave the filter out entirely instead of sending a blank value.")
+  .optional();
+
 const filterSchema = z.object({
-  plan: z.string().optional(),
-  country: z.string().optional(),
-  company: z.string().optional(),
+  plan: textFilter,
+  country: textFilter,
+  company: textFilter,
   includeTypes: z.array(z.enum(CONTACT_TYPES)).optional(),
 });
 
@@ -356,7 +368,7 @@ router.get("/unsubscribe", async (req, res) => {
     .send(
       ok
         ? `<div style="font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center">
-             <h2>You're unsubscribed ✅</h2>
+             <h2>You're unsubscribed</h2>
              <p>You will no longer receive these emails.</p>
            </div>`
         : `<p style="font-family:sans-serif">Invalid unsubscribe link.</p>`

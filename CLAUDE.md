@@ -11,11 +11,14 @@ new features, and promotions to clients of several separate products/brands
 
 Full plan: **[FINAL-PLAN.md](FINAL-PLAN.md)** — read it before doing design work.
 Beginner glossary (Bangla): **[GLOSSARY.md](GLOSSARY.md)**.
-**Everything about email: [EMAIL-GUIDE.md](EMAIL-GUIDE.md)** — how email actually
-works, SPF/DKIM/DMARC, the full click-by-click AWS SES setup for DevOps, who does
-what, costs, troubleshooting, and our whole email history (WordPress → personal AWS
-→ now) incl. the WordPress→MailHub cutover checklist. **Answer SES/deliverability
-questions from that file, and update it rather than re-explaining in chat.**
+**Bulk mail / AWS SES setup: [AWS-SES-BULK-MAIL-GUIDE.md](AWS-SES-BULK-MAIL-GUIDE.md)**
+— a general, click-by-click guide to standing up bulk mail on SES (account, domain,
+SPF/DKIM/DMARC, production access), written so a non-developer can follow it.
+**Answer SES/deliverability questions from that file, and update it rather than
+re-explaining in chat.** It replaced the old EMAIL-GUIDE.md, which the owner
+deleted on purpose (2026-08-22): that file had become a project diary, and the
+project's own status belongs in PROGRESS.md instead. Our SES account facts live
+in PROGRESS.md § "Office AWS SES account".
 Current build status + how to run: **[PROGRESS.md](PROGRESS.md)** — read this at the
 start of a new session to know exactly what already works and what's next.
 
@@ -28,10 +31,67 @@ start of a new session to know exactly what already works and what's next.
   (under its phase) — **not** into PROGRESS.md's next-up list. Only move it into
   PROGRESS.md when it actually becomes the immediate next task.
 
+## The rule that outranks the others: build the MVP
+
+Owner, 2026-08-22: *"we are creating MVP. if we create heavy from start then it
+make me overwhelming."* The smallest thing that solves the stated problem — every
+time. **If the owner does not do it today, it is not MVP**: it goes in
+FINAL-PLAN.md, not into the build.
+
+The rule is about **not building** things, not about hiding what is built. Asked
+directly whether the send page's three filter dropdowns (Plan / Country /
+Company) should collapse behind an "Add a filter" button, the owner chose to
+**keep all three visible**. So do not "tidy" that panel away — three plain
+controls they can see beat one control that hides them.
+
+This has already cost real work. Saved segments were built, reviewed three times
+and parked unmerged, because the owner sends to every contact type with no filters
+and the five-control Filters panel it produced drew *"I can see this and it
+overwhelming"*. Prefer fixing a bug the owner can see over adding a capability
+they never asked for. Details: PROGRESS.md § 2026-08-22.
+
+**And the bigger version of the same rule:** this app has never sent one email to
+one real customer — the company still runs its mail from WordPress. Deploying it
+beats anything else on the backlog. See PROGRESS.md § "Recommended next steps".
+
+## The other rule that outranks the rest: never leave backdated info
+
+Owner, 2026-08-22: *"always update backdated info … each time we face problems
+with old info."* Stale documentation has cost this project real time, repeatedly,
+and it is worse than missing documentation: nobody acts on a blank page, everybody
+acts on a confident sentence that stopped being true.
+
+**Before saying a piece of work is done, and before every PR, sweep the docs
+against the running system.** Not a skim — check the claims:
+
+- **Every factual claim you touched.** If the work changed a number, a file path,
+  a region, a status or a default, find the sentence that states the old one.
+  Today's sweep found: a send rate of "~5/sec" that measurement put at ~1.6/sec;
+  "always test in the SES sandbox first" when no sandbox exists any more; and a
+  comment naming the wrong file for the function it tells you to keep in sync.
+- **A section marked "superseded" is not handled.** PROGRESS.md had one whose
+  body still read in the present tense — "current setup = personal AWS SES in
+  sandbox", "a fake address shows Failed" — every clause false, the last one
+  dangerous. **Delete the misleading body**, keep the one sentence that explains
+  why past decisions were made.
+- **What you learned but nothing records.** Half of today's sweep was additions,
+  not corrections: which mailboxes the dev contacts are, why the old test data
+  had to go, that `.env` does not hot-reload. If a future session would have to
+  rediscover it, write it down.
+- **Absolute dates, never relative.** "Last week" is unreadable in three months.
+- **Say what is unverified.** If you could not check something — today the
+  browser was locked, so the pages were only confirmed to return 200, never seen
+  — write that next to the claim instead of implying it was tested.
+
+Keep CLAUDE.md, PROGRESS.md, FINAL-PLAN.md and README.md consistent with each
+other in the same pass; a link or claim repeated in four files goes stale in four
+places. The user should never be the one to notice.
+
 ## Current status (read first)
 **Phase 1 MVP is BUILT and working locally** — backend (Express + Prisma + PostgreSQL
 in Docker) and frontend (Next.js) both run. Verified end-to-end (14/14 checks) and
-real emails delivered via Amazon SES (personal dev account, sandbox).
+real emails delivered via Amazon SES — now the **office account, us-east-1,
+production** (the personal dev sandbox it started on is gone).
 Frontend is styled in a clean **Loops-style** look (left sidebar, soft violet accent,
 light/dark). Details, exact "done vs next", and run commands are in **PROGRESS.md**.
 
@@ -40,14 +100,27 @@ light/dark). Details, exact "done vs next", and run commands are in **PROGRESS.m
 scheduled send survives a restart). **Auto-pause is now done too** — the last
 Phase 1 guardrail, and the one big tools have that we didn't.
 
-**⚠️ No email can actually be sent right now — and that is a decision, not a bug.**
-The personal AWS account (dev SES sandbox) was **closed** when its 6-month free
-plan ran out, so every send returns `UnrecognizedClientException`. The owner chose
-**not** to reactivate or replace it: real sending was always going to move to the
-**office AWS account**, and the closed account also held an old EC2 instance whose
-meter would restart on reactivation. So we wait. **Don't offer to "fix the SES
-keys" — replacing them cannot work, the account behind them is gone.** Feature work
-is unaffected; test everything up to the SES call. Full reasoning: PROGRESS.md.
+**⚠️ SES: the office account has arrived, and `.env` has not caught up.** As of
+2026-08-22 the office AWS key is in hand and verified: **us-east-1 has production
+access** (not sandbox, `HEALTHY`, 166,700/day) with `innovatesolution.com`,
+`tripgic.com` and `tripmargin.com` already DKIM-verified. The old personal account
+is closed for good — **never offer to "fix" its keys.**
+- ✅ **Cutover done (2026-08-22).** `backend/.env` now holds the office key,
+  `AWS_REGION=us-east-1` and `SES_FROM=no-reply@innovatesolution.com`, and a real
+  campaign was delivered to four Gmail/Workspace inboxes — DKIM-signed by
+  `innovatesolution.com`, `mailed-by amazonses.com`. **Never set the region back
+  to `ap-southeast-1`:** AWS has this account SHUT DOWN there.
+- 🔴 **The next blocker is `PUBLIC_URL`, and it is bigger than it looks.** It is
+  unset, so every unsubscribe link, open pixel and tracked link in a sent email
+  points at `http://localhost:4000`. Open and click tracking therefore record
+  **nothing**, and — worse — Gmail's one-click unsubscribe POSTs to that dead
+  address, so a client who unsubscribes is never suppressed and keeps being
+  emailed. Only a deploy can fix it, which is why deploy is now step 2.
+- **It is a shared LIVE account** — 83 identities, real customer mail for other
+  travel brands. The sandbox used to make a coding mistake harmless; that net is
+  gone. **Test only to `success@simulator.amazonses.com`.** Our bounce/complaint
+  rates now touch other brands' reputation, so auto-pause matters much more.
+Full detail: PROGRESS.md § "Office AWS SES account".
 
 **Dev servers:** after a merge, branch switch, or laptop restart, **restart both dev
 servers** — an orphaned Next.js process serves stale CSS/JS and looks like a bug
@@ -71,6 +144,12 @@ as the visual reference for new screens. Demo URLs are listed in **PROGRESS.md**
 - Deleting campaigns/contacts also removes the recipient rows behind **analytics and
   the auto-pause denominator**. That is allowed, and the confirm dialogs say so.
 
+**No emoji in anything a client receives.** Owner, 2026-08-22: *"delete emoji from
+subject that looks cheap."* That covers email subjects and bodies, the unsubscribe
+page (a client lands there straight from their inbox), and the **placeholders** in
+the subject boxes — a rocket sitting in the placeholder was teaching the habit.
+Emoji in our own docs and in the app's own chrome (the `⌘K` badge) are fine.
+
 **Writing for this user in the UI:** short sentences, plain global English, and lead
 with the consequence rather than the mechanism ("If you change their email address,
 they will start receiving emails again" beat "we block by address, not by person").
@@ -89,11 +168,13 @@ token classes: `text-foreground` / `text-muted-foreground`, `bg-primary` /
 **`text-destructive`** (e.g. required-field `*`). Avoid hardcoded Tailwind colors like
 `text-red-500`. Required fields: use `<Label required>…</Label>` (renders the `*`).
 
-**Dev scope (owner's decision):** build **everything possible with personal credentials
-first** (all features + self-test on verified emails), and do **SES production access +
-deploy LAST**, only at real launch (emailing actual customers). Don't block feature work
-on them; sequence plans feature-work-first, prod/deploy-at-the-end. Full details:
-PROGRESS.md (§ "How far we can go WITHOUT SES production access + deploy").
+**Dev scope — REVERSED 2026-08-22.** The old rule was "build every feature first,
+deploy LAST", because SES production access was months away. It is not: the office
+account already has it. **The new sequence is SES cutover → deploy → one real send
+→ leave WordPress → then ask what to build.** Feature work is on hold, including
+items that were "next" before 2026-08-22 (segments, global search, Teams/RBAC,
+multi-brand).
+Full list and reasoning: PROGRESS.md § "Recommended next steps".
 
 ## Run locally (quick)
 1. `docker compose up -d db`  (repo root — starts PostgreSQL)
@@ -192,7 +273,16 @@ guides the user through each manual task.
   internal)** · Tips / Transactional → client. Rationale: staff/prospects should see
   new features (support needs to know them; a feature can convert a prospect).
   Internal is never in the default marketing audience.
-  - The rule is written **twice** — `defaultTypesForCategory`
+  - **A second must-mirror pair:** `matchesText` + `selectAudience`
+    (`backend/src/email/audience.ts`, authoritative — it decides who is emailed)
+    and `matches` + `audienceOf` (`frontend/src/lib/audience.ts`, which produces
+    the "N people will receive this" the sender approves). **Change one, change
+    the other**, or the screen promises one audience and the server mails
+    another. Both compare in plain JS on purpose: Prisma's
+    `mode: "insensitive"` compiles to `ILIKE`, so `%` and `_` in a plan or
+    country would act as wildcards (measured: a filter of `"%"` matched every
+    contact with a plan).
+  - The category rule is written **twice** — `defaultTypesForCategory`
     (`backend/src/email/send-campaign.ts`, authoritative: applied whenever a request
     omits `includeTypes`) and `defaultTypes` (`frontend/.../campaigns/[id]/page.tsx`,
     mirrors it to pre-check the boxes). **Change both or neither.**
@@ -289,7 +379,8 @@ guides the user through each manual task.
   - **Bugs found by actually using the app still get through review.** The
     "cancel schedule resets the audience" bug read as sensible code and was only
     obvious in use. Prefer clicking through a feature over re-reading it.
-- **Test data:** use SES's `success@simulator.amazonses.com` (sandbox accepts it,
+- **Test data:** use SES's `success@simulator.amazonses.com` (accepted on a
+  production account too,
   no real person is emailed). Name test rows with a clear prefix and **delete them
   when done** — the user should never inherit test clutter.
 - **Branching rule:** for a **big feature**, ALWAYS create a branch first
@@ -300,5 +391,11 @@ guides the user through each manual task.
   `docker-compose up` → run migrations → nginx + SSL.
 - Claude handles setup (docker-compose, migrations, nginx, SSL, backups). The user
   does the familiar push/pull and checks the result.
-- Always verify email flows in SES **sandbox** first; use
-  `bounce@simulator.amazonses.com` to test suppression.
+- **There is no sandbox to test in any more** — the only account is the office
+  one, and it is production. Use the SES **simulator** addresses, which are
+  accepted on a production account and delivered to nobody:
+  `success@simulator.amazonses.com` (a clean send),
+  `bounce@simulator.amazonses.com` (suppression), and
+  `complaint@simulator.amazonses.com`. **Never invent a fake address** like
+  `someone@example.com`: on a production account that is a real hard bounce
+  counted against every other brand sending from that account.

@@ -13,7 +13,7 @@ router.post("/test-email", async (req, res) => {
   try {
     const messageId = await sendEmail({
       to: parsed.data.to,
-      subject: "MailHub test ✅",
+      subject: "MailHub test",
       html: "<h2>It works!</h2><p>This is a test email from MailHub via Amazon SES.</p>",
       text: "It works! This is a test email from MailHub via Amazon SES.",
     });

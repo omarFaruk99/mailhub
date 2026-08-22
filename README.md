@@ -2,7 +2,7 @@
 
 Central, multi-brand email & campaign platform for Inno Travel Tech.
 Plan: [FINAL-PLAN.md](FINAL-PLAN.md) · Glossary (Bangla): [GLOSSARY.md](GLOSSARY.md)
-· **Email & AWS SES guide (Bangla): [EMAIL-GUIDE.md](EMAIL-GUIDE.md)**
+· **Bulk mail / AWS SES setup guide (Bangla): [AWS-SES-BULK-MAIL-GUIDE.md](AWS-SES-BULK-MAIL-GUIDE.md)**
 
 ## Folder structure
 
@@ -14,7 +14,7 @@ Plan: [FINAL-PLAN.md](FINAL-PLAN.md) · Glossary (Bangla): [GLOSSARY.md](GLOSSAR
 ├── docker-compose.yml runs PostgreSQL (+ apps later)
 ├── .env.example       copy to .env, fill secrets    (never commit .env)
 ├── FINAL-PLAN.md      full plan
-├── EMAIL-GUIDE.md     how email works + AWS SES setup, step by step (Bangla)
+├── AWS-SES-BULK-MAIL-GUIDE.md   bulk mail on AWS SES, step by step (Bangla)
 ├── GLOSSARY.md        beginner terms (Bangla)
 └── CLAUDE.md          instructions for Claude Code
 ```

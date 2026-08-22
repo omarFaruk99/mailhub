@@ -3,6 +3,7 @@
 import { prisma } from "../prisma.js";
 import { sendEmail } from "./ses.js";
 import { isPaused, pauseIfUnhealthy } from "./auto-pause.js";
+import { selectAudience } from "./audience.js";
 
 /** Thrown when a send is refused because the brand's sending is paused. */
 export class SendingPausedError extends Error {
@@ -12,15 +13,12 @@ export class SendingPausedError extends Error {
   }
 }
 
-export const CONTACT_TYPES = ["client", "prospect", "internal"] as const;
-export type ContactType = (typeof CONTACT_TYPES)[number];
-
-export type SendFilter = {
-  plan?: string;
-  country?: string;
-  company?: string;
-  includeTypes?: ContactType[];
-};
+// The audience vocabulary lives in ./filter-types.js so that ./audience.js can
+// use it without importing this module — this one imports ./audience.js, and the
+// two pointing at each other is a cycle. Re-exported here because every existing
+// caller reaches for these through send-campaign.
+export { CONTACT_TYPES, type ContactType, type SendFilter } from "./filter-types.js";
+import type { ContactType, SendFilter } from "./filter-types.js";
 
 export type SendResult = {
   matched: number;
@@ -167,9 +165,6 @@ export async function sendCampaign(campaignId: string, filter: SendFilter): Prom
       ? filter.includeTypes
       : defaultTypesForCategory(campaign.category);
 
-  // Company filter: trim + case-insensitive so "abc travel" matches "ABC Travel".
-  const companyFilter = filter.company?.trim();
-
   // 1) Suppressed emails for this brand (unsubscribe/bounce/complaint).
   const suppressed = await prisma.suppression.findMany({
     where: { brandId: campaign.brandId },
@@ -177,17 +172,10 @@ export async function sendCampaign(campaignId: string, filter: SendFilter): Prom
   });
   const suppressedSet = new Set(suppressed.map((s) => s.email));
 
-  // 2) Contacts of this brand matching the filter, only subscribed.
-  const contacts = await prisma.contact.findMany({
-    where: {
-      brandId: campaign.brandId,
-      status: "subscribed",
-      type: { in: includeTypes },
-      ...(filter.plan ? { plan: filter.plan } : {}),
-      ...(filter.country ? { country: filter.country } : {}),
-      ...(companyFilter ? { company: { equals: companyFilter, mode: "insensitive" as const } } : {}),
-    },
-  });
+  // 2) Contacts of this brand matching the filter, only subscribed. The rule
+  // itself is in audience.ts, mirrored by the send page, so the count the sender
+  // approved is the set this loop emails — one definition, not two that drift.
+  const contacts = await selectAudience(campaign.brandId, filter, includeTypes);
 
   let sent = 0;
   let skippedSuppressed = 0;
