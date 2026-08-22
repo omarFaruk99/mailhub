@@ -4,7 +4,7 @@
 > এক প্রতিষ্ঠান → অনেক brand/product → প্রতি brand-এ অনেক team।
 > বড় কোম্পানির (Mailchimp / HubSpot / SendGrid) মানের কাঠামো।
 >
-> 📧 **ইমেইল/SES/DNS-এর সব কিছু → [EMAIL-GUIDE.md](EMAIL-GUIDE.md)** — ইমেইল কীভাবে
+> 📧 **ইমেইল/SES/DNS-এর সব কিছু → [AWS-SES-BULK-MAIL-GUIDE.md](AWS-SES-BULK-MAIL-GUIDE.md)** — ইমেইল কীভাবে
 > কাজ করে, SPF/DKIM/DMARC, DevOps-এর জন্য ধাপে ধাপে AWS সেটআপ, খরচ, সমস্যা সমাধান,
 > আমাদের পুরো ইতিহাস, আর WordPress → MailHub হস্তান্তরের checklist।
 

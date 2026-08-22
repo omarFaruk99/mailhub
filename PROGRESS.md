@@ -1,11 +1,19 @@
 # PROGRESS — where we are
 
-_Last updated: 2026-08-16 · Read this first in a new session._
+_Last updated: 2026-08-22 · Read this first in a new session._
 
-> 📧 **Anything about email, SES, DNS or deliverability → [EMAIL-GUIDE.md](EMAIL-GUIDE.md).**
-> That file holds the click-by-click AWS setup for DevOps, the SPF/DKIM/DMARC
-> explanation, costs, troubleshooting, our full email history, and the
-> WordPress→MailHub cutover checklist. It replaces the old `_TEMP-email-notes.md`.
+> 📧 **How to set up bulk mail on AWS SES → [AWS-SES-BULK-MAIL-GUIDE.md](AWS-SES-BULK-MAIL-GUIDE.md).**
+> A general click-by-click guide (account, domain, SPF/DKIM/DMARC, production
+> access) that a non-developer can follow. It replaced EMAIL-GUIDE.md, which the
+> owner deleted on purpose — that file had turned into a project diary, and this
+> file is where project status belongs. **Our own SES account facts are below.**
+
+> 🎯 **Build the MVP, not the full version.** Owner, 2026-08-22: *"we are creating
+> MVP. if we create heavy from start then it make me overwhelming."* The smallest
+> thing that works, every time. New controls start hidden. If the owner does not
+> do it today, it is not MVP — it goes in FINAL-PLAN.md, not into the build.
+> This is why saved segments are parked (see below): the feature worked, and the
+> five-control Filters panel it produced was the problem.
 
 ## ✅ Phase 1 (MVP) — BUILT & verified (local dev)
 
@@ -270,12 +278,18 @@ frozen in `Campaign.sendOptions`.
 - Prisma Studio: `cd backend && npm run prisma:studio`
 - New migration after schema change: `cd backend && npx prisma migrate dev --name x && npx prisma generate`
 
-## Email / SES (dev)
-Personal AWS, region **ap-southeast-1**, **sandbox**. Sender `no-reply@omarsec.com`
-(DKIM verified via Cloudflare). Verified test recipients: `omarfaruk19952035@gmail.com`,
-`shuvon19952035@gmail.com`. Full detail + DevOps setup guide: `_TEMP-email-notes.md`.
+## Email / SES
+See **§ "Office AWS SES account"** below — that is the live answer. In short:
+office account, region **us-east-1**, **production access already granted**, and
+`innovatesolution.com` / `tripgic.com` / `tripmargin.com` verified with DKIM.
+`backend/.env` has NOT been switched over yet.
 
-## How far we can go WITHOUT SES production access + deploy (read this)
+## How far we can go WITHOUT SES production access + deploy (SUPERSEDED 2026-08-22)
+
+> ⚠️ **This section is history.** It was written when SES production access was
+> months away. The office account already has it (see below), so the wall this
+> section describes is gone. Kept only to explain why earlier work was sequenced
+> feature-first. **The live sequencing decision is in "Recommended next steps".**
 
 **Owner's decision (strategy):** build **everything that is possible with personal
 credentials** first (all features + self-testing on verified emails). Do **SES
@@ -306,70 +320,113 @@ to email **actual customers**. Until then keep building + self-testing on verifi
   approve, so start a bit before launch. Adds SPF/DMARC + custom MAIL FROM.
 - **#Deploy**: docker-compose (backend+frontend) + nginx + SSL on the company Linux server.
 
-## ⚠️ The dev SES keys that were already working have stopped working
+## ✅ Office AWS SES account — ARRIVED (2026-08-22), and it changes the plan
 
-**This is NOT the "SES production access" item — that one is still correctly last.**
-Two different things, easy to confuse:
+The owner supplied the office AWS key (`inno-product-update`). Verified read-only
+against AWS the same day:
 
-| | What it is | When |
-| --- | --- | --- |
-| **Dev access keys** | The personal-AWS `AKIA…` key pair in `backend/.env`. **Already provided** (Step 5, July) — real emails were delivered with it. | done long ago |
-| **SES production access** | AWS lifting the sandbox so we may email **unverified** people. | **LAST, at real launch** — unchanged |
+| Region | State |
+| --- | --- |
+| **us-east-1** | ✅ **USE THIS.** Production access (NOT sandbox), `HEALTHY`, quota **166,700/day** at 19/sec, ~2,553 real emails in the last 24h |
+| **ap-southeast-1** | ❌ **NEVER USE.** `EnforcementStatus: SHUTDOWN` — AWS has disabled sending for this account in that region |
+| ap-south-1 / eu-west-1 | sandbox, irrelevant |
 
-**Cause confirmed (2026-08-15): the personal AWS account is CLOSED.** Signing in
-shows "Your account is closed… If you do not reactivate your account, your account
-will be permanently closed." The 6-month AWS Free Plan ran out and the account was
-not moved to a Paid Plan. Every send therefore answers
-`UnrecognizedClientException` — "The security token included in the request is
-invalid". Nothing is wrong with our code; the keys in `backend/.env` are intact
-and the right shape, but the account behind them no longer exists.
+**All three brand domains are already verified, DKIM `SUCCESS`, signing on:**
+`innovatesolution.com` · `tripgic.com` · `tripmargin.com`
+(also `innovatesolution.org` and three `@innovatesolution.com` addresses).
+Custom MAIL FROM is **not** set on any of them.
 
-### Decision (2026-08-15): do nothing — wait for the office AWS account
+**What this cancels:** "#SES production access — apply in AWS, takes days" is
+**done already**. It was the last big blocker in the plan and it no longer exists.
 
-**We are deliberately letting the personal account go.** Real sending was always
-going to move to the **office AWS account** (us-east-1 + brand domains), so
-rebuilding the practice sandbox would be paid-for, time-consuming work that gets
-thrown away. Reactivating was rejected for a concrete reason: that account also
-held an **EC2 instance** from an older project (since moved to Vercel), and EC2 —
-not SES — is what generated the bills. Bringing the account back risks bringing the
-meter back with it.
+**⚠️ Two things to hold on to:**
+1. **`backend/.env` still says `AWS_REGION=ap-southeast-1`** — the SHUTDOWN
+   region, where none of our domains are verified. It must become `us-east-1`.
+   `SES_FROM` is still `no-reply@omarsec.com`, a domain that is gone; it must
+   become an address on `innovatesolution.com`.
+2. **This is a shared, LIVE production account** — 83 verified identities, real
+   customer mail for many other travel brands. The sandbox used to be the safety
+   net that made a coding mistake harmless; **that net is gone.** Test only to
+   `success@simulator.amazonses.com`. Our bounce/complaint rates now affect other
+   brands' reputation, which makes auto-pause matter far more than before.
 
-**Consequence, accepted:** the ~90-day reactivation window will lapse, and with it
-the `omarsec.com` domain verification, its **DKIM CNAMEs in Cloudflare**, the two
-verified sandbox recipients, and IAM user `mailhub-dev`. Do not treat their later
-absence as a bug.
+### The personal dev account (history — do not try to revive)
+The personal AWS account was **closed** when its 6-month free plan ran out, so its
+`AKIA…` keys answer `UnrecognizedClientException`. Deliberately let go: real
+sending was always moving to the office account, and that account also held an old
+**EC2** instance whose meter would restart on reactivation. Its `omarsec.com`
+verification, DKIM CNAMEs and two verified sandbox recipients have lapsed — not a
+bug. Worth remembering: the cost risk in AWS is **servers** (EC2/Lightsail,
+~$8–15/month whether used or not), not **SES** (~$0.10 per 1,000 emails).
 
-**What this costs us:** no real email can be sent until the office account exists —
-so no checking how a template renders in a real Gmail inbox. Everything else is
-still testable, including the send pipeline up to the SES call.
-**What it does not cost us:** nothing else. No feature work depends on SES.
+## 2026-08-22 — the plan/country filter bug, and segments parked
 
-Worth remembering for later, since the fear was reasonable: the cost risk in AWS is
-**servers** (EC2/Lightsail, ~$8–15/month whether used or not), not **SES** (~$0.10
-per 1,000 emails — about $1/month at this project's real volume, and $0 when idle).
-When the office account is set up: SES only, never EC2.
+**Bug fixed (branch `claude/ses-office-account`, commit `51245f1`).** `company` was
+matched case-insensitively but **`plan` and `country` were matched EXACTLY**, and
+the data really holds both `Paid` and `paid` — five contacts on one spelling, one on
+the other. Filtering by either silently left the other group out of the send.
+Nobody can see a contact that is missing from a count; the total just looks about
+right. **The owner spotted it themselves** ("Paid" appearing twice in a dropdown).
+- `backend/src/email/audience.ts` is now the **single definition** of "who does this
+  filter select", used by the send loop. `frontend/src/lib/audience.ts` is the
+  browser's mirror, so "N people will receive this" is a promise the server keeps.
+  **Change one, change the other.**
+- `backend/src/email/filter-types.ts` holds `CONTACT_TYPES` / `SendFilter` so
+  `audience.ts` and `send-campaign.ts` can share them without an import cycle.
+- `frontend/src/lib/options.ts` holds the shared plan/country option lists (moved
+  out of the Contacts screen, which had its own copy), merged case-insensitively so
+  no dropdown offers `Paid` and `paid`, with discovered values sorted.
+- Send page gained a **Country** filter (the backend always accepted it), and a
+  filter value with no matching `<option>` stays selectable — otherwise the box
+  renders EMPTY while the filter is applied, so the send reaches fewer people than
+  the control admits.
 
-It does not block feature work: auto-pause was verified end-to-end without SES
-(49/49 checks), and everything except the actual SES call can still be tested.
+**Saved segments: BUILT, then PARKED — do not rebuild.** Named audience rules
+("Paid clients · Bangladesh") storing the *rule*, not a list of people: Audiences
+screen with live counts, a picker in the send page's Filters panel, `ruleKey`
+uniquely indexed per brand so two segments can never select the same people. Three
+`/code-review` passes, all findings fixed and verified.
+- **Parked because the owner does not segment at all.** They send to every contact
+  type with no filters — exactly what the category→audience pre-check already does
+  for free. The five-control Filters panel it produced drew *"I can see this and it
+  overwhelming"*. Not a bug in the feature; the feature was not needed.
+- **Where it lives:** branch **`claude/saved-segments`**, commit **`7b5f767`**.
+  Not merged. Its `Segment` table and two migrations were dropped from the dev
+  database so Prisma does not later offer to reset it.
+- **When to revive:** the day a send goes to Paid-only, one country, or one
+  company. Until then, adding it back is the opposite of MVP.
 
-## ▶️ Recommended next steps (in order)
-All buildable + self-testable now with personal credentials (SES production + deploy
-stay LAST, only at real launch — see the "Dev scope" section above).
-0. ~~**Analytics dashboard**~~ ✅ · ~~**Scheduling**~~ ✅ (PRs #7–#11) ·
-   ~~**Auto-pause**~~ ✅ (PR #13, with the `PUBLIC_URL` fix and the click
-   open-redirect fix) · ~~**Campaign + contact edit/delete**~~ ✅ (PR #14, with the
-   contact-dialog redesign and the plan/country pickers).
-1. **Saved segments + working global search** (contact `type`/`company` filters exist;
-   save named segments + wire the sidebar search box).
-3. **Teams + RBAC roles + approval workflow** (Draft→Review→Approve→Send) — one bigger
-   chunk (approval needs roles). **Revisit the category→audience pre-check here.**
-4. **Template polish** — image **upload** button (needs Cloudflare R2 key) + a no-code
-   editor (drag-and-drop / fill-in-fields) for non-coders.
-5. **Multi-brand** (brand switcher) **+ preference center** (per-category opt-out).
-6. **LAST, at launch:** SES **production access** (+ SPF/DMARC) and **deploy**
-   (docker-compose + nginx + SSL on the company server). Do the **`EmailEvent`
-   table** in the same round (see FINAL-PLAN.md §6) — it unlocks rolling
-   bounce/complaint rates, unique vs total opens, and device/country reports.
+## ▶️ Recommended next steps (in order) — REORDERED 2026-08-22
+
+**Stop building features. Ship what exists.**
+
+The honest position, agreed with the owner on 2026-08-22: **this app has never sent
+one email to one real customer.** The company still runs its mail from WordPress.
+Since Phase 1 was declared done we added analytics, scheduling, auto-pause,
+edit/delete and segments — all good work, all of it added to something nobody uses.
+That is not MVP. The reason deploy was deferred ("SES production access is months
+away") **stopped being true today**: the office account already has it.
+
+1. **SES cutover** — `backend/.env`: office key · `AWS_REGION=us-east-1` ·
+   `SES_FROM` on `innovatesolution.com`. Then **one** test send to
+   `success@simulator.amazonses.com`. Nothing else. ⚠️ It is a live shared account —
+   see the SES section above before touching this.
+2. **Deploy** — docker-compose (add backend + frontend services) + nginx + SSL on
+   the company Linux server. `PUBLIC_URL` **must** be the real outside URL, or every
+   unsubscribe / open / click link ships broken to real customers.
+3. **One real send** — small and deliberate (10–20 people), from the deployed app.
+   This is the finish line the whole project was for.
+4. **Leave WordPress** — once step 3 works twice, move the real list over.
+5. **Then, and only then, ask what to build next.** After a real send the answer
+   comes from use, not from guessing. The likeliest real gap is that **nobody at the
+   company can write an email without writing HTML** — a no-code editor beats every
+   other backlog item on that evidence, but wait for the evidence.
+
+**Explicitly on hold** (all were "next" before today — none blocks a real send):
+saved segments (built, parked — see above) · global search · Teams + RBAC +
+approval · multi-brand + preference center · template image upload (R2) ·
+`EmailEvent` table. Do the `EmailEvent` table with step 2 only if it is free;
+otherwise it waits (FINAL-PLAN.md §6).
 
 ### End-of-project checks (NOT code review — do these once the system is whole)
 Per-feature `/code-review` continues as normal; these are the ones that only make
@@ -396,8 +453,9 @@ warm-up, auto-pause) · a real-volume send (~800) for timing · one full path
     canvas/inspector header-border alignment, and default tab (sent→Recipients,
     draft→Email Preview) with a loading gate so no wrong-tab flash on reload.
 - **Working global search** (sidebar box is visual only).
-- **Saved segments** (contact `type`/`company` filter chips are done; saving a
-  named segment + more filter fields still pending).
+- **Saved segments** — ✅ **built, then PARKED on branch `claude/saved-segments`**
+  (commit `7b5f767`), because the owner does not segment at all. Details and the
+  "when to revive" test are in the 2026-08-22 section above. **Do not rebuild it.**
 - **Dashboard widgets** ✅ **DONE** — engagement chart + deliverability card + real
   stat tiles (see the Analytics entry above). Still open: per-tile sparklines and
   device/country/email-client breakdowns (needs an `EmailEvent` table first).

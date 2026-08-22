@@ -11,11 +11,14 @@ new features, and promotions to clients of several separate products/brands
 
 Full plan: **[FINAL-PLAN.md](FINAL-PLAN.md)** — read it before doing design work.
 Beginner glossary (Bangla): **[GLOSSARY.md](GLOSSARY.md)**.
-**Everything about email: [EMAIL-GUIDE.md](EMAIL-GUIDE.md)** — how email actually
-works, SPF/DKIM/DMARC, the full click-by-click AWS SES setup for DevOps, who does
-what, costs, troubleshooting, and our whole email history (WordPress → personal AWS
-→ now) incl. the WordPress→MailHub cutover checklist. **Answer SES/deliverability
-questions from that file, and update it rather than re-explaining in chat.**
+**Bulk mail / AWS SES setup: [AWS-SES-BULK-MAIL-GUIDE.md](AWS-SES-BULK-MAIL-GUIDE.md)**
+— a general, click-by-click guide to standing up bulk mail on SES (account, domain,
+SPF/DKIM/DMARC, production access), written so a non-developer can follow it.
+**Answer SES/deliverability questions from that file, and update it rather than
+re-explaining in chat.** It replaced the old EMAIL-GUIDE.md, which the owner
+deleted on purpose (2026-08-22): that file had become a project diary, and the
+project's own status belongs in PROGRESS.md instead. Our SES account facts live
+in PROGRESS.md § "Office AWS SES account".
 Current build status + how to run: **[PROGRESS.md](PROGRESS.md)** — read this at the
 start of a new session to know exactly what already works and what's next.
 
@@ -27,6 +30,23 @@ start of a new session to know exactly what already works and what's next.
 - A feature the user likes but wants done "later/at the end" goes into FINAL-PLAN.md
   (under its phase) — **not** into PROGRESS.md's next-up list. Only move it into
   PROGRESS.md when it actually becomes the immediate next task.
+
+## The rule that outranks the others: build the MVP
+
+Owner, 2026-08-22: *"we are creating MVP. if we create heavy from start then it
+make me overwhelming."* The smallest thing that solves the stated problem — every
+time. New controls start hidden. **If the owner does not do it today, it is not
+MVP**: it goes in FINAL-PLAN.md, not into the build.
+
+This has already cost real work. Saved segments were built, reviewed three times
+and parked unmerged, because the owner sends to every contact type with no filters
+and the five-control Filters panel it produced drew *"I can see this and it
+overwhelming"*. Prefer fixing a bug the owner can see over adding a capability
+they never asked for. Details: PROGRESS.md § 2026-08-22.
+
+**And the bigger version of the same rule:** this app has never sent one email to
+one real customer — the company still runs its mail from WordPress. Deploying it
+beats anything else on the backlog. See PROGRESS.md § "Recommended next steps".
 
 ## Current status (read first)
 **Phase 1 MVP is BUILT and working locally** — backend (Express + Prisma + PostgreSQL
@@ -40,14 +60,19 @@ light/dark). Details, exact "done vs next", and run commands are in **PROGRESS.m
 scheduled send survives a restart). **Auto-pause is now done too** — the last
 Phase 1 guardrail, and the one big tools have that we didn't.
 
-**⚠️ No email can actually be sent right now — and that is a decision, not a bug.**
-The personal AWS account (dev SES sandbox) was **closed** when its 6-month free
-plan ran out, so every send returns `UnrecognizedClientException`. The owner chose
-**not** to reactivate or replace it: real sending was always going to move to the
-**office AWS account**, and the closed account also held an old EC2 instance whose
-meter would restart on reactivation. So we wait. **Don't offer to "fix the SES
-keys" — replacing them cannot work, the account behind them is gone.** Feature work
-is unaffected; test everything up to the SES call. Full reasoning: PROGRESS.md.
+**⚠️ SES: the office account has arrived, and `.env` has not caught up.** As of
+2026-08-22 the office AWS key is in hand and verified: **us-east-1 has production
+access** (not sandbox, `HEALTHY`, 166,700/day) with `innovatesolution.com`,
+`tripgic.com` and `tripmargin.com` already DKIM-verified. The old personal account
+is closed for good — **never offer to "fix" its keys.**
+- `backend/.env` still points at **`ap-southeast-1`**, where AWS has that account
+  **SHUT DOWN** and none of our domains exist, with `SES_FROM` on a dead domain. A
+  send today fails for both reasons. Region must become `us-east-1`.
+- **It is a shared LIVE account** — 83 identities, real customer mail for other
+  travel brands. The sandbox used to make a coding mistake harmless; that net is
+  gone. **Test only to `success@simulator.amazonses.com`.** Our bounce/complaint
+  rates now touch other brands' reputation, so auto-pause matters much more.
+Full detail: PROGRESS.md § "Office AWS SES account".
 
 **Dev servers:** after a merge, branch switch, or laptop restart, **restart both dev
 servers** — an orphaned Next.js process serves stale CSS/JS and looks like a bug
@@ -89,11 +114,12 @@ token classes: `text-foreground` / `text-muted-foreground`, `bg-primary` /
 **`text-destructive`** (e.g. required-field `*`). Avoid hardcoded Tailwind colors like
 `text-red-500`. Required fields: use `<Label required>…</Label>` (renders the `*`).
 
-**Dev scope (owner's decision):** build **everything possible with personal credentials
-first** (all features + self-test on verified emails), and do **SES production access +
-deploy LAST**, only at real launch (emailing actual customers). Don't block feature work
-on them; sequence plans feature-work-first, prod/deploy-at-the-end. Full details:
-PROGRESS.md (§ "How far we can go WITHOUT SES production access + deploy").
+**Dev scope — REVERSED 2026-08-22.** The old rule was "build every feature first,
+deploy LAST", because SES production access was months away. It is not: the office
+account already has it. **The new sequence is SES cutover → deploy → one real send
+→ leave WordPress → then ask what to build.** Feature work is on hold, including
+items that were "next" yesterday (segments, global search, Teams/RBAC, multi-brand).
+Full list and reasoning: PROGRESS.md § "Recommended next steps".
 
 ## Run locally (quick)
 1. `docker compose up -d db`  (repo root — starts PostgreSQL)
