@@ -242,7 +242,12 @@ function CampaignSend() {
   // silently left the other group out of the send.
   // No manual useMemo — Next 16's React Compiler memoizes automatically.
   const contactRows = contacts.data ?? [];
-  const planOptions = mergeOptions(COMMON_PLANS, contactRows.map((c) => c.plan));
+  // Plans this brand's contacts actually have, in the Contacts screen's spelling.
+  // Seeding COMMON_PLANS here would offer Free/Trial/Paid even when nobody is on
+  // them, and picking one drops the count to 0 and quietly disables Send. The
+  // Contacts screen is the opposite case and keeps the standard list: there you
+  // are ASSIGNING a plan, so it must offer values nobody has yet.
+  const planOptions = mergeOptions([], contactRows.map((c) => canonical(c.plan, COMMON_PLANS)));
   const companyOptions = mergeOptions([], contactRows.map((c) => c.company));
   // Countries this brand's contacts actually have, spelled the way the Contacts
   // screen spells them. Two halves, both needed:

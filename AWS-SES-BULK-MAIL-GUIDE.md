@@ -178,10 +178,38 @@ Gmail/Outlook-এ inbox-এ পৌঁছানো খারাপ হবে। �
 ⚠️ **ধাপ ১১ বা ধাপ ১২ — যেকোনো একটা করলেই চলে, দুটোই লাগে না।**
 এই একটা করলে পরেরটা (SMTP) স্কিপ করে সরাসরি ধাপ ১৩-এ যান।
 
+> 📌 **কোনটা আপনার লাগবে:** আপনার সফটওয়্যার **AWS SDK/API** দিয়ে পাঠালে
+> **ধাপ ১১** (Access Key)। শুধু **SMTP** সমর্থন করলে (যেমন WordPress plugin,
+> পুরনো CRM) **ধাপ ১২**। **MailHub-এ SMTP নেই — তাই MailHub-এর জন্য ধাপ ১১।**
+> ভুল করে শুধু ধাপ ১২ করলে যে credential পাবেন সেটা অ্যাপ ব্যবহারই করতে পারবে
+> না, আর ওই পাতা একবার বন্ধ করলে আর দেখা যায় না।
+
 **Navigation:** সার্চ বক্সে লিখুন `IAM` → **IAM** কনসোল → বামের সাইডবারে
 **Access Management → IAM users** ক্লিক → **Create user** → নাম দিন
-(যেমন `ses-sender`) → Next → **Attach policies directly** → সার্চে
-`AmazonSESFullAccess` লিখে টিক দিন → Create user।
+(যেমন `ses-sender`) → Next → **Attach policies directly**।
+
+**Policy কী দেবেন — এখানে সাবধান।** সহজ পথ হলো `AmazonSESFullAccess` টিক দেওয়া,
+কিন্তু ওটা **পুরো account-এর উপর ক্ষমতা** দেয় — ওই key দিয়ে domain মুছে ফেলা,
+এমনকি account-এর পাঠানো বন্ধ করে দেওয়া সম্ভব। একটা account থেকে যদি একাধিক
+domain/brand-এর mail যায়, তাহলে একটা key ফাঁস হলে **সবগুলোই বিপদে**।
+
+**তাই শুধু "পাঠানোর" অনুমতি দিন।** Create policy → JSON → এটা বসান:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+নাম দিন `ses-send-only`, তারপর সেটা টিক দিয়ে **Create user**। অ্যাপের এর
+বেশি কিছু লাগে না।
 
 তারপর: IAM users লিস্ট → `ses-sender` ক্লিক → **Security credentials** ট্যাব →
 **Create access key** → Use case = **Application running outside AWS**
@@ -212,8 +240,8 @@ mail library-এর সাথে সহজে কাজ করে।
 - **User name** — default রাখা যায় (যেমন `ses-smtp-user.20260820-200820`)
 - **Permissions** — AWS নিজে থেকে একটা group বানাবে
   (`AWSSESSendingGroupDoNotRename`), যাতে শুধু `ses:SendRawEmail`
-  permission থাকে — এটা Access Key-এর `AmazonSESFullAccess`-এর চেয়েও
-  নিরাপদ (শুধু মেইল পাঠানোর অনুমতি, আর কিছু না)
+  permission থাকে — শুধু মেইল পাঠানোর অনুমতি, আর কিছু না। ধাপ ১১-এ যে
+  `ses-send-only` policy বানালাম, সেটাই একই মাত্রার নিরাপত্তা
 - **Tags** — খালি রাখুন (ঐচ্ছিক)
 
 শেষে **Create user** ক্লিক করুন। এরপর **"Retrieve SMTP credentials"**
