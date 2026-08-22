@@ -57,7 +57,8 @@ beats anything else on the backlog. See PROGRESS.md § "Recommended next steps".
 ## Current status (read first)
 **Phase 1 MVP is BUILT and working locally** — backend (Express + Prisma + PostgreSQL
 in Docker) and frontend (Next.js) both run. Verified end-to-end (14/14 checks) and
-real emails delivered via Amazon SES (personal dev account, sandbox).
+real emails delivered via Amazon SES — now the **office account, us-east-1,
+production** (the personal dev sandbox it started on is gone).
 Frontend is styled in a clean **Loops-style** look (left sidebar, soft violet accent,
 light/dark). Details, exact "done vs next", and run commands are in **PROGRESS.md**.
 
@@ -109,6 +110,12 @@ as the visual reference for new screens. Demo URLs are listed in **PROGRESS.md**
   a later CSV import from re-emailing someone who unsubscribed.
 - Deleting campaigns/contacts also removes the recipient rows behind **analytics and
   the auto-pause denominator**. That is allowed, and the confirm dialogs say so.
+
+**No emoji in anything a client receives.** Owner, 2026-08-22: *"delete emoji from
+subject that looks cheap."* That covers email subjects and bodies, the unsubscribe
+page (a client lands there straight from their inbox), and the **placeholders** in
+the subject boxes — a rocket sitting in the placeholder was teaching the habit.
+Emoji in our own docs and in the app's own chrome (the `⌘K` badge) are fine.
 
 **Writing for this user in the UI:** short sentences, plain global English, and lead
 with the consequence rather than the mechanism ("If you change their email address,
@@ -338,7 +345,8 @@ guides the user through each manual task.
   - **Bugs found by actually using the app still get through review.** The
     "cancel schedule resets the audience" bug read as sensible code and was only
     obvious in use. Prefer clicking through a feature over re-reading it.
-- **Test data:** use SES's `success@simulator.amazonses.com` (sandbox accepts it,
+- **Test data:** use SES's `success@simulator.amazonses.com` (accepted on a
+  production account too,
   no real person is emailed). Name test rows with a clear prefix and **delete them
   when done** — the user should never inherit test clutter.
 - **Branching rule:** for a **big feature**, ALWAYS create a branch first
@@ -349,5 +357,11 @@ guides the user through each manual task.
   `docker-compose up` → run migrations → nginx + SSL.
 - Claude handles setup (docker-compose, migrations, nginx, SSL, backups). The user
   does the familiar push/pull and checks the result.
-- Always verify email flows in SES **sandbox** first; use
-  `bounce@simulator.amazonses.com` to test suppression.
+- **There is no sandbox to test in any more** — the only account is the office
+  one, and it is production. Use the SES **simulator** addresses, which are
+  accepted on a production account and delivered to nobody:
+  `success@simulator.amazonses.com` (a clean send),
+  `bounce@simulator.amazonses.com` (suppression), and
+  `complaint@simulator.amazonses.com`. **Never invent a fake address** like
+  `someone@example.com`: on a production account that is a real hard bounce
+  counted against every other brand sending from that account.

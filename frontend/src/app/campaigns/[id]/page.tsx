@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 
 // Which contact types are pre-checked for a category (user can change).
-// Mirrors backend `defaultTypesForCategory` in routes/campaigns.ts.
+// Mirrors backend `defaultTypesForCategory` in email/send-campaign.ts.
 function defaultTypes(category?: string): ContactType[] {
   if (category === "Marketing/Offers") return ["client", "prospect"];
   if (category === "Product updates") return ["client", "prospect", "internal"];

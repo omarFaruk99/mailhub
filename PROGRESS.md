@@ -253,8 +253,10 @@ Template.
 | Every email | unsubscribe link + RFC 8058 header + open/click tracking auto-appended |
 | Schedule picker | now + 1 hour, browser timezone, minimum 2 minutes out |
 | Scheduled job | 2 retries, 1-hour expiry, 10s poll |
-| Send pacing | 200ms between emails (~5/sec) |
+| Send pacing | 200ms sleep between emails, but the real rate is **~1.6/sec** — measured 2026-08-22: ~0.40s per SES round trip to us-east-1 + 0.20s sleep + ~0.02s of DB writes = ~0.62s each. **800 recipients ≈ 8–9 minutes.** AWS allows 19/sec, so we use about 8% of the ceiling; the sleep is deliberate headroom for auto-pause to stop a bad send |
 | Analytics | 30-day range; warn at bounce 5%, complaint 0.1% |
+| Plan / country / company filter | matched **case-insensitively and trimmed**, and blank means "any". Compared in plain JS (`matchesText`), never with Prisma's `mode: "insensitive"` — that compiles to `ILIKE`, where `%` and `_` are wildcards |
+| A blank text filter | **refused with 400.** Present-but-blank is not ignored, because ignoring it WIDENS the send: `{"plan":" "}` would reach the whole brand. Omit the key instead |
 
 **Category → audience is a PRE-CHECK, not a lock** — the sender can change it, and
 the confirm dialog shows the chosen audience + recipient count before sending.
@@ -271,11 +273,52 @@ pre-checking `internal`). Changing it later is cheap: two 5-line functions, no
 migration, and already-scheduled sends are unaffected because their audience is
 frozen in `Campaign.sendOptions`.
 
+## Dev database — reset 2026-08-22, read before sending anything
+
+The old test data was deleted the moment SES went to production, because a fake
+address is no longer harmless: in the sandbox it failed quietly, on a live shared
+account it is a **real hard bounce** counted against 83 other brands' reputation.
+Four of the seven subscribed contacts were `@example.com`, i.e. a 57% bounce rate,
+and **auto-pause would not have caught it** — its `minSent` floor is 50 and there
+were 7.
+
+What is in the dev database now:
+
+| | |
+| --- | --- |
+| Contacts | **4, all mailboxes the owner controls** — one per type/plan/country so filters are testable: `omarfaruk19952035@gmail.com` (client · Paid · ABC Travel · Bangladesh), `shuvon19952035@gmail.com` (client · Free · Sky Tours · UK), `omar@innovatesolution.com` (internal), `omar.25innovate@gmail.com` (prospect · Trial · Skyline Travel · US) |
+| Campaigns | the one real test send (14 test campaigns deleted) |
+| Templates | 6 = the 3 auto-seeded starters × 2 brands. **The starters are not test data** — do not delete them |
+| Suppression | 0 |
+| Brands | 2 — "Innovate Solution", plus an empty leftover "Verify Brand" from an old verification run |
+
+**Rules that follow from this:**
+- **Never add a fake address.** Use `success@simulator.amazonses.com`, which SES
+  accepts and delivers to nobody.
+- The category→audience defaults now produce three different totals here
+  (Product updates → 4, Marketing/Offers → 3, Tips/Transactional → 2), which is
+  what makes them worth testing.
+
 ## Run locally
 1. `docker compose up -d db`
 2. `cd backend && npm run dev`   (http://localhost:4000)
 3. `cd frontend && npm run dev`  (http://localhost:3000)
 - Prisma Studio: `cd backend && npm run prisma:studio`
+- **There are TWO `.env` files, and they are not interchangeable.** The one at the
+  repo root is read by **docker-compose** (`DB_USER` / `DB_PASSWORD` / `DB_NAME`);
+  `backend/.env` is the only one the **backend process** reads. Both happen to
+  declare `AWS_*` names, but the root copy's are empty and nothing reads them
+  today. **At deploy this becomes a trap:** once backend/frontend services are
+  added to docker-compose, whichever file feeds the container is the one whose
+  region and key are used — point it at `backend/.env`'s values, or a send will
+  fail with credentials that look present.
+- **`.env` changes do not hot-reload.** `tsx watch` only watches `.ts`, so after
+  editing `backend/.env` the server must be restarted — and a plain restart is not
+  always enough: killing the npm wrapper can leave the node child holding port
+  4000 with the OLD environment. That cost half an hour on the SES cutover, with
+  the symptom being `UnrecognizedClientException` from a key that was verified
+  working seconds earlier. Check `netstat -ano | grep :4000` and compare the
+  process start time against the file's modified time.
 - New migration after schema change: `cd backend && npx prisma migrate dev --name x && npx prisma generate`
 
 ## Email / SES
@@ -291,34 +334,17 @@ office account, region **us-east-1**, **production access already granted**, and
 > section describes is gone. Kept only to explain why earlier work was sequenced
 > feature-first. **The live sequencing decision is in "Recommended next steps".**
 
-**Owner's decision (strategy):** build **everything that is possible with personal
-credentials** first (all features + self-testing on verified emails). Do **SES
-production access + deploy LAST**, only at real launch when we must email actual
-customers. Sequence every plan this way — feature work first, prod/deploy at the end.
+**What it said, in one paragraph:** build every feature first using the personal
+sandbox, and leave SES production access + deploy until real launch, because
+production access was expected to take days of AWS approval we did not have. That
+is why analytics, scheduling, auto-pause and edit/delete were built before the
+app was ever deployed.
 
-Current setup = **personal AWS SES in sandbox** + local dev. That is enough to
-**build and self-test everything** — do NOT block feature work waiting on prod/deploy.
-
-**✅ Can do now with personal credentials (sandbox + local):**
-- Build every feature (template editor, scheduling, analytics, approval, RBAC, etc.).
-- Run the whole app locally and test end-to-end.
-- Actually send emails — but **only to verified test recipients**
-  (`omarfaruk19952035@gmail.com`, `shuvon19952035@gmail.com`), plus SES's own
-  **simulator** address `success@simulator.amazonses.com`, which sandbox always
-  accepts — handy for testing a real successful send without emailing a person.
-- Contacts, campaigns, type/company filters, open/click tracking, unsubscribe — all testable.
-
-**❌ Needs SES production access + deploy first (the wall):**
-- Sending to **real, unverified** clients/prospects (that's why a non-verified address
-  like `omar@example.com` shows **Failed** in sandbox).
-- **Bulk / higher volume** sends.
-- Team-wide live use (needs the app deployed on the company server).
-
-**When to start #SES-production and #deploy:** only at real launch — i.e. when we need
-to email **actual customers**. Until then keep building + self-testing on verified emails.
-- **#SES production access**: apply in AWS (owner task; Claude guides) — takes days to
-  approve, so start a bit before launch. Adds SPF/DMARC + custom MAIL FROM.
-- **#Deploy**: docker-compose (backend+frontend) + nginx + SSL on the company Linux server.
+**Every specific claim in it is now false**, which is why the detail was removed
+rather than left to be skimmed: the personal sandbox no longer exists, its two
+verified recipients lapsed with it, "needs production access" is done, and a fake
+address no longer "shows Failed" — on the live account it is a real hard bounce.
+Nothing here should guide a decision. Use "Recommended next steps".
 
 ## ✅ Office AWS SES account — ARRIVED (2026-08-22), and it changes the plan
 

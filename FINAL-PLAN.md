@@ -253,7 +253,7 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 ## ১০. ধাপে ধাপে বানানোর প্ল্যান (Phase)
 
 **Phase 1 — MVP (এক brand দিয়ে শুরু, যেমন Innovate)** — ✅ **সম্পন্ন (local dev)**; বিস্তারিত [PROGRESS.md](PROGRESS.md)
-- Brand + Sender identity — domain + **DKIM ✅ verified**; **SPF + DMARC — production-এর আগে বাকি** (dev sandbox-এ এখনো করা হয়নি)
+- Brand + Sender identity — অফিস account-এ `innovatesolution.com` / `tripgic.com` / `tripmargin.com` **DKIM ✅ verified** (us-east-1, production)। **SPF + DMARC এখনো বাকি**, আর custom MAIL FROM কোনোটাতেই সেট করা নেই — deploy-এর সময় করতে হবে (তখন SPF বাধ্যতামূলক হয়ে যায়)
 - Contact (এক ইমেইল = এক record) + CSV import
 - Campaign type + একটি broadcast (filter সহ) SES দিয়ে পাঠানো
 - Unsubscribe + **one-click unsubscribe (RFC 8058)** + per-contact suppression
@@ -297,7 +297,7 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 
 ## ১১. গুরুত্বপূর্ণ সাজেশন (আমার)
 - এক brand (Innovate) দিয়ে শুরু করুন — কাজ করলে বাকিগুলো সহজে যোগ হবে।
-- SES শুরুতে **sandbox** → domain verify → **production access** নিন।
+- ~~SES শুরুতে **sandbox** → domain verify → **production access** নিন।~~ ✅ **হয়ে গেছে** — অফিস account-এ us-east-1-এ production access আগেই ছিল (2026-08-22)। ⚠️ `ap-southeast-1` ব্যবহার করবেন না, ওখানে account বন্ধ।
 - **DKIM অবশ্যই** চালু; নতুন domain → **warm-up**।
 - **Marketing ও transactional আলাদা subdomain** থেকে পাঠান।
 - **Bounce < ৫%**, **complaint < ০.১%** রাখুন; নইলে SES বন্ধ করতে পারে।
@@ -349,7 +349,7 @@ SES-এ ~$০.১ প্রতি হাজার মেইল (নগণ্য)
 ---
 
 ## ১৩. যাচাই (Verification)
-- SES sandbox-এ verified ইমেইলে টেস্ট মেইল।
+- ✅ টেস্ট মেইল হয়েছে (2026-08-22) — মালিকের ৪টা inbox-এ, DKIM signed। **sandbox আর নেই**, তাই টেস্ট করতে হবে SES simulator address-এ (`success@`/`bounce@`/`complaint@simulator.amazonses.com`) বা নিজের inbox-এ। ভুয়া address (`@example.com`) কখনো নয় — production-এ ওটা আসল bounce।
 - Test campaign → filter ঠিক লোক বাছছে; open/click ট্র্যাক আসছে।
 - SES simulator `bounce@simulator.amazonses.com` → suppression কাজ করছে।
 - Unsubscribe ও preference → পুনরায় মেইল বন্ধ হচ্ছে।
