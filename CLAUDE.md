@@ -35,8 +35,14 @@ start of a new session to know exactly what already works and what's next.
 
 Owner, 2026-08-22: *"we are creating MVP. if we create heavy from start then it
 make me overwhelming."* The smallest thing that solves the stated problem — every
-time. New controls start hidden. **If the owner does not do it today, it is not
-MVP**: it goes in FINAL-PLAN.md, not into the build.
+time. **If the owner does not do it today, it is not MVP**: it goes in
+FINAL-PLAN.md, not into the build.
+
+The rule is about **not building** things, not about hiding what is built. Asked
+directly whether the send page's three filter dropdowns (Plan / Country /
+Company) should collapse behind an "Add a filter" button, the owner chose to
+**keep all three visible**. So do not "tidy" that panel away — three plain
+controls they can see beat one control that hides them.
 
 This has already cost real work. Saved segments were built, reviewed three times
 and parked unmerged, because the owner sends to every contact type with no filters
