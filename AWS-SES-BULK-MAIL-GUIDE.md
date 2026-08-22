@@ -20,20 +20,23 @@
 
 **Navigation:** AWS Console → উপরে ডানদিকে কোণায় region ড্রপডাউন
 (যেমন লেখা থাকবে "N. Virginia" বা অন্য কিছু) → ক্লিক করে
-**Asia Pacific (Singapore) ap-southeast-1** বাছুন।
+**US East (N. Virginia) us-east-1** বাছুন।
+
+কেন us-east-1: SES-এর সব সুবিধা এখানে সবার আগে আসে, আর **এই প্রজেক্টের
+(MailHub) অফিস account-এ এই region-টাই production access পাওয়া আর তিনটে brand
+domain verify করা** — Singapore-এ ওই account বন্ধ (`SHUTDOWN`)।
+
+কাছের region চাইলে **Asia Pacific (Singapore) ap-southeast-1** বাছতে পারেন
+(বাংলাদেশ থেকে latency কম) — কিন্তু **পুরনো account হলে আগে অবস্থা দেখে নিন**,
+কারণ AWS খারাপ bounce/complaint-এর কারণে একটা region-এ পাঠানো বন্ধ করে রাখতে
+পারে। দেখার জায়গা: SES Console → **Account dashboard**।
 
 ⚠️ যা বাছবেন এই region-ই মনে রাখবেন — বাকি সব ধাপ এই একই region-এ করতে হবে।
 Domain verify, DKIM, production access — সব **region আলাদা আলাদা**। এক region-এ
 verify করলে অন্য region-এ কাজ করবে না।
 
-⚠️ **নতুন account-এর জন্য Singapore ঠিক আছে (বাংলাদেশের সবচেয়ে কাছে)। কিন্তু
-পুরনো account হলে আগে অবস্থা দেখে নিন** — AWS খারাপ bounce/complaint-এর কারণে
-কোনো একটা region-এ পাঠানো বন্ধ (`SHUTDOWN`) করে রাখতে পারে, আর তখন ওই region-এ
-কিছুই যাবে না। SES Console → **Account dashboard**-এ অবস্থা দেখা যায়।
-
-> 📌 **এই প্রজেক্টের (MailHub) জন্য region = `us-east-1`**, Singapore নয়। অফিসের
-> AWS account-এ `ap-southeast-1` বন্ধ করা আছে, আর তিনটে brand domain আগেই
-> `us-east-1`-এ verify করা। বিস্তারিত: PROGRESS.md।
+> 📌 আমাদের নিজের SES অবস্থা (কোন account, কোন region, কোন domain verified) →
+> **PROGRESS.md**।
 
 ---
 
@@ -226,8 +229,9 @@ mail library-এর সাথে সহজে কাজ করে।
 
 নতুন console-এ SMTP endpoint/port আলাদাভাবে আর দেখায় না — এটা region
 অনুযায়ী ফিক্সড:
-- **Endpoint:** `email-smtp.<region>.amazonaws.com` (যেমন আপনার region
-  `ap-southeast-1` হলে `email-smtp.ap-southeast-1.amazonaws.com`)
+- **Endpoint:** `email-smtp.<region>.amazonaws.com` (যেমন region `us-east-1`
+  হলে `email-smtp.us-east-1.amazonaws.com`) — **ধাপ ২-এ যে region বেছেছেন,
+  হুবহু সেটাই বসান**, নইলে কিছুই যাবে না
 - **Port:** `587` (recommended, STARTTLS দিয়ে) — বিকল্প হিসেবে `465`
   (TLS wrapper) ব্যবহার করা যায়, `25` এড়িয়ে চলুন
 
@@ -264,7 +268,7 @@ sending quota।
 
 নিচেরগুলো নিরাপদে (পাসওয়ার্ড ম্যানেজার/এনক্রিপ্টেড শেয়ার — চ্যাটে না) দিন:
 
-- AWS Region (যেমন `ap-southeast-1`)
+- AWS Region (যেমন `us-east-1`)
 - Access Key ID + Secret Access Key (API ব্যবহার করলে)
 - SMTP endpoint + username + password (SMTP ব্যবহার করলে)
 - ভেরিফাই করা sender domain/email (যেমন `no-reply@mail.yourcompany.com`)
