@@ -20,6 +20,35 @@ export type SendFilter = {
   company?: string;
   includeTypes?: ContactType[];
 };
+/**
+ * A saved, named audience rule — "Paid clients · Bangladesh".
+ *
+ * It stores the RULE, not a list of people, so a contact added tomorrow that
+ * matches is in the segment tomorrow. `count` is recomputed by the server on
+ * every read and already excludes anyone we must not email.
+ */
+export type Segment = {
+  id: string;
+  brandId: string;
+  name: string;
+  /** Empty = every contact type. */
+  includeTypes: ContactType[];
+  plan?: string | null;
+  country?: string | null;
+  company?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Only on the list endpoint: how many people it selects right now. */
+  count?: number;
+};
+export type SegmentInput = {
+  name: string;
+  includeTypes?: ContactType[];
+  plan?: string | null;
+  country?: string | null;
+  company?: string | null;
+};
+
 export type Campaign = {
   id: string;
   name: string;
@@ -255,6 +284,14 @@ export const api = {
   deleteTemplate: (id: string) =>
     req<{ ok: boolean }>(`/templates/${id}`, { method: "DELETE" }),
   starterTemplates: () => req<StarterTemplate[]>("/starter-templates"),
+
+  // Segments (saved audience rules). The list carries a live `count`.
+  segments: (brandId: string) => req<Segment[]>(`/brands/${brandId}/segments`),
+  createSegment: (brandId: string, s: SegmentInput) =>
+    req<Segment>(`/brands/${brandId}/segments`, { method: "POST", body: JSON.stringify(s) }),
+  updateSegment: (id: string, s: Partial<SegmentInput>) =>
+    req<Segment>(`/segments/${id}`, { method: "PUT", body: JSON.stringify(s) }),
+  deleteSegment: (id: string) => req<{ ok: boolean }>(`/segments/${id}`, { method: "DELETE" }),
 
   analytics: (brandId: string, days = 30) =>
     req<Analytics>(`/brands/${brandId}/analytics?days=${days}`),

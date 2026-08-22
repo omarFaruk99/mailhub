@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Send, LayoutTemplate, Search, Moon, ChevronsUpDown, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Users, Send, LayoutTemplate, Search, Moon, ChevronsUpDown, BarChart3, Filter } from "lucide-react";
 import { useBrand } from "@/lib/use-brand";
 import { SendingPausedBanner } from "@/components/sending-paused-banner";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,9 @@ import { cn } from "@/lib/utils";
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/contacts", label: "Contacts", icon: Users },
+  // Right below Contacts: a segment is a saved view OF the contacts, so the two
+  // belong together rather than out near the sending screens.
+  { href: "/audiences", label: "Audiences", icon: Filter },
   { href: "/templates", label: "Templates", icon: LayoutTemplate },
   { href: "/campaigns", label: "Campaigns", icon: Send },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },

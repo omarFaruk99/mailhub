@@ -31,6 +31,48 @@ model Brand {
   campaigns    Campaign[]
   suppressions Suppression[]
   templates    Template[]
+  segments     Segment[]
+}
+
+// A segment = a saved, NAMED audience rule — "Paid clients in Bangladesh".
+//
+// It stores the RULE, not a list of people: a contact added tomorrow that matches
+// is in the segment tomorrow, with nobody re-picking anyone. That is the whole
+// point, and it is why there is no join table here.
+//
+// The fields are exactly the send filter's fields, because a segment IS a send
+// filter with a name on it. An empty/null field means "any", same as the filter.
+//
+// Deliberately NOT referenced from Campaign.sendOptions: a scheduled campaign
+// freezes its resolved filter values, so editing a segment can never silently
+// change who a send that is already scheduled goes to.
+model Segment {
+  id           String   @id @default(uuid())
+  name         String
+  // Which contact types are in it. Empty = every type (no restriction).
+  includeTypes String[]
+  plan         String?
+  country      String?
+  company      String?
+  // The rule above, normalised into one comparable string (see `ruleKey` in
+  // routes/segments.ts). It exists only to be a unique index: the send page works
+  // out which segment the current filters ARE, and with two segments selecting
+  // the same people it can only pick one — so the confirm dialog would show a
+  // name the sender never chose. A read-then-write check in the route cannot
+  // promise that; two requests can both read "no twin" and both insert.
+  ruleKey      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id])
+
+  // One segment name per brand — two "Paid clients" would be indistinguishable
+  // in the send page's picker, which is the one place the name has to be trusted.
+  // (Case-only variants are caught in the route; Postgres unique is case-sensitive.)
+  @@unique([brandId, name])
+  // One RULE per brand, enforced by the database rather than by a check.
+  @@unique([brandId, ruleKey])
 }
 
 // A template = a saved, reusable email design (name + HTML body).

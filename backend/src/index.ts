@@ -8,6 +8,7 @@ import templatesRouter from "./routes/templates.js";
 import trackingRouter from "./routes/tracking.js";
 import webhooksRouter from "./routes/webhooks.js";
 import analyticsRouter from "./routes/analytics.js";
+import segmentsRouter from "./routes/segments.js";
 import { startQueue, stopQueue } from "./queue.js";
 
 const app = express();
@@ -33,6 +34,8 @@ app.use("/", trackingRouter);
 app.use("/", webhooksRouter);
 // Analytics (real open/click/bounce numbers).
 app.use("/", analyticsRouter);
+// Segments (saved, named audience rules).
+app.use("/", segmentsRouter);
 
 const port = Number(process.env.BACKEND_PORT) || 4000;
 
