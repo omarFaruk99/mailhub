@@ -356,7 +356,7 @@ router.get("/unsubscribe", async (req, res) => {
     .send(
       ok
         ? `<div style="font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center">
-             <h2>You're unsubscribed ✅</h2>
+             <h2>You're unsubscribed</h2>
              <p>You will no longer receive these emails.</p>
            </div>`
         : `<p style="font-family:sans-serif">Invalid unsubscribe link.</p>`

@@ -123,7 +123,7 @@ export function TemplateEditor({ template }: { template?: Template }) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Subject</Label>
-            <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="🚀 What's new" />
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="What's new" />
           </div>
           <div className="flex flex-1 flex-col gap-1.5">
             <Label required>Body (HTML)</Label>

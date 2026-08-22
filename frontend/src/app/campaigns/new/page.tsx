@@ -116,7 +116,7 @@ export default function NewCampaignPage() {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label required>Subject</Label>
-            <Input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="🚀 What's new" />
+            <Input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="What's new" />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label required>Body (HTML)</Label>
