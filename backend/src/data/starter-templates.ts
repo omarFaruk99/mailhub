@@ -20,7 +20,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     key: "product-update",
     label: "Product update / New feature",
     category: "Product updates",
-    subject: "🚀 What's new",
+    subject: "What's new",
     html: outer(`
       <tr><td style="background:#6d28d9;padding:20px 32px">
         <p style="margin:0;color:#ede9fe;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">Product update</p>
@@ -36,7 +36,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     key: "newsletter",
     label: "Newsletter / Digest",
     category: "Product updates",
-    subject: "📰 Your monthly update",
+    subject: "Your monthly update",
     html: outer(`
       <tr><td style="padding:28px 32px 8px">
         <p style="margin:0 0 8px;font-size:15px;color:#3f3f46">Hi {{name}},</p>
@@ -44,9 +44,9 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
         <p style="margin:0 0 8px;font-size:14px;color:#71717a">A quick roundup of what's new.</p>
       </td></tr>
       <tr><td style="padding:8px 32px">
-        <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#18181b">📌 Headline one</h2>
+        <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#18181b">Headline one</h2>
         <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#3f3f46">Short description of the first item.</p>
-        <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#18181b">📌 Headline two</h2>
+        <h2 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#18181b">Headline two</h2>
         <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#3f3f46">Short description of the second item.</p>
         <a href="https://example.com" style="display:inline-block;background:#18181b;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 22px;border-radius:8px">Read more</a>
       </td></tr>`),
@@ -55,7 +55,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     key: "offer",
     label: "Marketing / Offer",
     category: "Marketing/Offers",
-    subject: "🎉 A special offer for you",
+    subject: "A special offer for you",
     html: outer(`
       <tr><td style="padding:32px 32px 8px" align="center">
         <p style="margin:0 0 4px;font-size:15px;color:#3f3f46">Hi {{name}},</p>
