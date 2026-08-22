@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useBrand } from "@/lib/use-brand";
 import { sendingStatusKey } from "@/lib/use-sending-status";
 import { countryNames } from "@/lib/countries";
+import { COMMON_PLANS, canonical, mergeOptions } from "@/lib/options";
 import { PageHeader } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -42,44 +43,9 @@ const TYPES: { value: ContactType; label: string }[] = [
 // which is why this only shows up here.)
 const typeLabel = (v: unknown) => TYPES.find((t) => t.value === v)?.label ?? String(v ?? "");
 
-// The usual plans. Whatever a brand already uses is added to this at render time,
-// so switching to a dropdown never hides or rewrites existing data.
-const COMMON_PLANS = ["Free", "Trial", "Paid"];
-
-/**
- * Merge the standard options with the values already in the data, treating
- * spellings that differ only by case as one option.
- *
- * Without this the list showed "Paid" AND "paid" — the two spellings already
- * sitting in the database, which is the very problem a dropdown is here to end.
- * `preferred` comes first, so the standard spelling is the one that survives.
- */
-function mergeOptions(preferred: string[], existing: (string | null | undefined)[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of [...preferred, ...existing]) {
-    const value = raw?.trim();
-    if (!value) continue;
-    const key = value.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(value);
-  }
-  return out;
-}
-
-/**
- * The option this stored value means, in the list's own spelling.
- *
- * A contact saved as "paid" shows as "Paid" and is stored that way the next time
- * anyone saves them — so the old spellings clean themselves up through normal use
- * instead of needing a migration.
- */
-function canonical(value: string | null | undefined, options: string[]): string {
-  const v = value?.trim();
-  if (!v) return "";
-  return options.find((o) => o.toLowerCase() === v.toLowerCase()) ?? v;
-}
+// COMMON_PLANS / mergeOptions / canonical now live in lib/options.ts — the send
+// page's filters and the segment editor need exactly the same lists, and three
+// copies of "which plans exist" would drift straight back into "Paid" vs "paid".
 
 // Why this contact is blocked, as a whole sentence rather than the raw database
 // word. It opens the warning, so it has to read as a statement on its own.

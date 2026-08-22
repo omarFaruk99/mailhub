@@ -8,7 +8,9 @@ import { api } from "@/lib/api";
 import type { ContactType } from "@/lib/api";
 import { useBrand } from "@/lib/use-brand";
 import { sendingStatusKey, useSendingStatus } from "@/lib/use-sending-status";
-import type { Campaign, Contact, Recipient } from "@/lib/api";
+import type { Campaign, Contact, Recipient, SendFilter } from "@/lib/api";
+import { audienceOf } from "@/lib/audience";
+import { COMMON_PLANS, canonical, mergeOptions } from "@/lib/options";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -173,6 +175,7 @@ function CampaignSend() {
   const [pickedTypes, setPickedTypes] = useState<ContactType[] | null>(null);
   const [planOverride, setPlanOverride] = useState<string | null>(null);
   const [companyOverride, setCompanyOverride] = useState<string | null>(null);
+  const [countryOverride, setCountryOverride] = useState<string | null>(null);
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   // Email preview auto-height: the iframe grows to its content's full height so the
   // whole card (header + body) scrolls together in the stage — like reading a real
@@ -226,29 +229,38 @@ function CampaignSend() {
   const frozen = campaign?.sendOptions ?? null;
 
   const types = pickedTypes ?? frozen?.includeTypes ?? defaultTypes(campaign?.category);
-  const plan = planOverride ?? frozen?.plan ?? "";
-  const company = companyOverride ?? frozen?.company ?? "";
   const setPlan = setPlanOverride;
   const setCompany = setCompanyOverride;
+  const setCountry = setCountryOverride;
   const toggleType = (t: ContactType) =>
     setPickedTypes(types.includes(t) ? types.filter((x) => x !== t) : [...types, t]);
 
-  // filter option lists (distinct values found in this brand's contacts).
+  // Filter option lists: the standard values plus whatever this brand's contacts
+  // already use, merged case-insensitively. A plain distinct-and-sort offered
+  // "Paid" AND "paid" — and since the two are one audience, picking either one
+  // silently left the other group out of the send.
   // No manual useMemo — Next 16's React Compiler memoizes automatically.
-  const planOptions = [...new Set((contacts.data ?? []).map((c) => c.plan).filter(Boolean) as string[])].sort();
-  const companyOptions = [...new Set((contacts.data ?? []).map((c) => c.company).filter(Boolean) as string[])].sort();
+  const contactRows = contacts.data ?? [];
+  const planOptions = mergeOptions(COMMON_PLANS, contactRows.map((c) => c.plan));
+  const companyOptions = mergeOptions([], contactRows.map((c) => c.company));
+  const countryOptions = mergeOptions([], contactRows.map((c) => c.country));
 
-  // live audience — mirrors the backend send filter so counts are accurate
+  // Shown in the list's own spelling. A campaign scheduled before the pickers
+  // existed can carry "paid" in its frozen options; it still selects the right
+  // people, but every chip and the confirm dialog should say "Paid" — one
+  // spelling on screen, whatever is in storage.
+  const plan = canonical(planOverride ?? frozen?.plan ?? "", planOptions);
+  const company = canonical(companyOverride ?? frozen?.company ?? "", companyOptions);
+  const country = canonical(countryOverride ?? frozen?.country ?? "", countryOptions);
+
+  // Live audience — the browser's mirror of the backend's send rule (lib/audience.ts).
   const suppressedSet = new Set((suppressions.data ?? []).map((s) => s.email));
-  const companyQ = company.trim().toLowerCase();
-  const audience = (contacts.data ?? []).filter(
-    (c) =>
-      c.status === "subscribed" &&
-      !suppressedSet.has(c.email) &&
-      types.includes(c.type) &&
-      (!plan || c.plan === plan) &&
-      (!companyQ || (c.company ?? "").trim().toLowerCase() === companyQ)
-  );
+  const filter: SendFilter = {
+    ...(plan ? { plan } : {}),
+    ...(country ? { country } : {}),
+    ...(company ? { company } : {}),
+  };
+  const audience = audienceOf(contactRows, suppressedSet, filter, types);
   const total = audience.length;
 
   // ---- when to send ----
@@ -272,7 +284,9 @@ function CampaignSend() {
   const scheduleIsFuture = scheduleAt >= zoneInputValue(nowMs, 1, timezone);
   const scheduleLooksValid = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(scheduleAt) && scheduleIsFuture;
 
-  const filterBody = { includeTypes: types, ...(plan ? { plan } : {}), ...(company ? { company } : {}) };
+  // What the server is asked to send to. Built from `filter` so the numbers on
+  // screen and the people who get the email come from the same object.
+  const filterBody = { includeTypes: types, ...filter };
 
   // ---- send ----
   const sendMut = useMutation({
@@ -709,16 +723,24 @@ function CampaignSend() {
               </div>
             </Accordion>
 
-            <Accordion num={2} title="Filters" summary={[plan, company].filter(Boolean).join(", ") || "None"}
-              openState={open.filters} onToggle={() => setOpen((o) => ({ ...o, filters: !o.filters }))}>
+            <Accordion
+              num={2}
+              title="Filters"
+              summary={[plan, country, company].filter(Boolean).join(", ") || "None"}
+              openState={open.filters}
+              onToggle={() => setOpen((o) => ({ ...o, filters: !o.filters }))}
+            >
               <FilterSelect label="Plan" value={plan} onChange={setPlan} options={planOptions} anyLabel="Any plan" />
+              <FilterSelect label="Country" value={country} onChange={setCountry} options={countryOptions} anyLabel="Any country" />
               <FilterSelect label="Company" value={company} onChange={setCompany} options={companyOptions} anyLabel="Any company" />
-              {(plan || company) && (
+              {(plan || country || company) && (
                 <div className="flex flex-wrap gap-1.5">
                   {plan && <FilterChip label={plan} onClear={() => setPlan("")} />}
+                  {country && <FilterChip label={country} onClear={() => setCountry("")} />}
                   {company && <FilterChip label={company} onClear={() => setCompany("")} />}
                 </div>
               )}
+
             </Accordion>
 
             <Accordion
@@ -863,9 +885,10 @@ function CampaignSend() {
               )}
             </ConfirmRow>
             <ConfirmRow k="Filters">
-              {plan || company ? (
-                <span className="flex flex-wrap gap-1.5">
+              {plan || country || company ? (
+                <span className="flex flex-wrap items-center gap-1.5">
                   {plan && <Pill>{plan}</Pill>}
+                  {country && <Pill>{country}</Pill>}
                   {company && <Pill>{company}</Pill>}
                 </span>
               ) : (
@@ -1244,16 +1267,29 @@ function Accordion({
 function FilterSelect({
   label, value, onChange, options, anyLabel,
 }: { label: string; value: string; onChange: (v: string) => void; options: string[]; anyLabel: string }) {
+  // A value with no matching <option> makes the browser show the box as EMPTY
+  // while the filter is very much applied — the send would then go to fewer
+  // people than the control admits. That happens for real: a campaign scheduled
+  // while "Enterprise" existed still carries that value after the last Enterprise
+  // contact is deleted. Keep it selectable.
+  //
+  // Matched case-insensitively, or a legacy "paid" would be added ALONGSIDE
+  // "Paid" and put both spellings back in the dropdown. They select the same
+  // people now, so the list only ever needs one — and the select has to be given
+  // that one, since `value="paid"` against `<option value="Paid">` is also no
+  // match as far as the browser is concerned.
+  const match = options.find((o) => o.toLowerCase() === value.trim().toLowerCase());
+  const shown = value && !match ? [value, ...options] : options;
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-[12px] text-muted-foreground">{label}</span>
       <select
-        value={value}
+        value={match ?? value}
         onChange={(e) => onChange(e.target.value)}
         className="h-9 rounded-lg border bg-card px-2.5 text-[13.5px]"
       >
         <option value="">{anyLabel}</option>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        {shown.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
     </label>
   );
