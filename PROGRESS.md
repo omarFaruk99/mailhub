@@ -282,7 +282,7 @@ frozen in `Campaign.sendOptions`.
 See **§ "Office AWS SES account"** below — that is the live answer. In short:
 office account, region **us-east-1**, **production access already granted**, and
 `innovatesolution.com` / `tripgic.com` / `tripmargin.com` verified with DKIM.
-`backend/.env` has NOT been switched over yet.
+`backend/.env` is switched over and a real campaign has been delivered.
 
 ## How far we can go WITHOUT SES production access + deploy (SUPERSEDED 2026-08-22)
 
@@ -339,16 +339,32 @@ Custom MAIL FROM is **not** set on any of them.
 **What this cancels:** "#SES production access — apply in AWS, takes days" is
 **done already**. It was the last big blocker in the plan and it no longer exists.
 
+### ✅ Cutover done, and the first real send worked (2026-08-22)
+`backend/.env` holds the office key, `AWS_REGION=us-east-1` and
+`SES_FROM=no-reply@innovatesolution.com`. A campaign built from the "Product
+update" starter reached four inboxes the owner controls: **DKIM-signed by
+`innovatesolution.com`**, `mailed-by amazonses.com`, TLS, three in the Inbox and
+one in Trash (Gmail-side, and Trash is not Spam — Gmail did not judge it).
+**Never set the region back to `ap-southeast-1`:** AWS has this account SHUT DOWN
+there, and none of our domains are verified in it.
+
 **⚠️ Two things to hold on to:**
-1. **`backend/.env` still says `AWS_REGION=ap-southeast-1`** — the SHUTDOWN
-   region, where none of our domains are verified. It must become `us-east-1`.
-   `SES_FROM` is still `no-reply@omarsec.com`, a domain that is gone; it must
-   become an address on `innovatesolution.com`.
+1. 🔴 **`PUBLIC_URL` is the next blocker, and it is bigger than it looks.** It is
+   unset, so every unsubscribe link, open pixel and tracked link in a sent email
+   points at `http://localhost:4000`. Two consequences, both seen in the first
+   real send: open/click tracking records **nothing** (every recipient row shows
+   `openedAt = null` however much the mail is read), and Gmail's one-click
+   unsubscribe POSTs to that dead address — so **a client who unsubscribes is
+   never suppressed and keeps being emailed**, which is how complaints start.
+   Only a deploy can fix it. That is why deploy is step 2 of the plan below.
 2. **This is a shared, LIVE production account** — 83 verified identities, real
    customer mail for many other travel brands. The sandbox used to be the safety
    net that made a coding mistake harmless; **that net is gone.** Test only to
    `success@simulator.amazonses.com`. Our bounce/complaint rates now affect other
    brands' reputation, which makes auto-pause matter far more than before.
+   Related: the backend has **no request logging**, so when the first send raised
+   "did Gmail's unsubscribe reach us?" there was no way to answer it from our
+   side. Worth adding with the deploy.
 
 ### The personal dev account (history — do not try to revive)
 The personal AWS account was **closed** when its 6-month free plan ran out, so its
@@ -407,10 +423,8 @@ edit/delete and segments — all good work, all of it added to something nobody 
 That is not MVP. The reason deploy was deferred ("SES production access is months
 away") **stopped being true today**: the office account already has it.
 
-1. **SES cutover** — `backend/.env`: office key · `AWS_REGION=us-east-1` ·
-   `SES_FROM` on `innovatesolution.com`. Then **one** test send to
-   `success@simulator.amazonses.com`. Nothing else. ⚠️ It is a live shared account —
-   see the SES section above before touching this.
+1. ~~**SES cutover**~~ ✅ **done 2026-08-22** — office key, `us-east-1`,
+   `no-reply@innovatesolution.com`, and a real campaign delivered to four inboxes.
 2. **Deploy** — docker-compose (add backend + frontend services) + nginx + SSL on
    the company Linux server. `PUBLIC_URL` **must** be the real outside URL, or every
    unsubscribe / open / click link ships broken to real customers.

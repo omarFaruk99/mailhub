@@ -3,7 +3,7 @@
 import { prisma } from "../prisma.js";
 import { sendEmail } from "./ses.js";
 import { isPaused, pauseIfUnhealthy } from "./auto-pause.js";
-import { audienceWhere } from "./audience.js";
+import { selectAudience } from "./audience.js";
 
 /** Thrown when a send is refused because the brand's sending is paused. */
 export class SendingPausedError extends Error {
@@ -173,11 +173,9 @@ export async function sendCampaign(campaignId: string, filter: SendFilter): Prom
   const suppressedSet = new Set(suppressed.map((s) => s.email));
 
   // 2) Contacts of this brand matching the filter, only subscribed. The rule
-  // itself is in audience.ts so a segment's "N contacts" counts exactly the
-  // people this loop will email — one definition, not two that drift.
-  const contacts = await prisma.contact.findMany({
-    where: audienceWhere(campaign.brandId, filter, includeTypes),
-  });
+  // itself is in audience.ts, mirrored by the send page, so the count the sender
+  // approved is the set this loop emails — one definition, not two that drift.
+  const contacts = await selectAudience(campaign.brandId, filter, includeTypes);
 
   let sent = 0;
   let skippedSuppressed = 0;

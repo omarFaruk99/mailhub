@@ -11,6 +11,7 @@ import { sendingStatusKey, useSendingStatus } from "@/lib/use-sending-status";
 import type { Campaign, Contact, Recipient, SendFilter } from "@/lib/api";
 import { audienceOf } from "@/lib/audience";
 import { COMMON_PLANS, canonical, mergeOptions } from "@/lib/options";
+import { countryNames } from "@/lib/countries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -243,7 +244,11 @@ function CampaignSend() {
   const contactRows = contacts.data ?? [];
   const planOptions = mergeOptions(COMMON_PLANS, contactRows.map((c) => c.plan));
   const companyOptions = mergeOptions([], contactRows.map((c) => c.company));
-  const countryOptions = mergeOptions([], contactRows.map((c) => c.country));
+  // Countries start from the same standard list the Contacts screen uses, or
+  // `canonical` below has nothing to normalise against: a CSV-imported
+  // "bangladesh" would read "Bangladesh" on Contacts and "bangladesh" here, in
+  // the dropdown, the chip and the confirm dialog.
+  const countryOptions = mergeOptions(countryNames(), contactRows.map((c) => c.country));
 
   // Shown in the list's own spelling. A campaign scheduled before the pickers
   // existed can carry "paid" in its frozen options; it still selects the right

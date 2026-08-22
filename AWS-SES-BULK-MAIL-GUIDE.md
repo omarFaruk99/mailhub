@@ -23,6 +23,17 @@
 **Asia Pacific (Singapore) ap-southeast-1** বাছুন।
 
 ⚠️ যা বাছবেন এই region-ই মনে রাখবেন — বাকি সব ধাপ এই একই region-এ করতে হবে।
+Domain verify, DKIM, production access — সব **region আলাদা আলাদা**। এক region-এ
+verify করলে অন্য region-এ কাজ করবে না।
+
+⚠️ **নতুন account-এর জন্য Singapore ঠিক আছে (বাংলাদেশের সবচেয়ে কাছে)। কিন্তু
+পুরনো account হলে আগে অবস্থা দেখে নিন** — AWS খারাপ bounce/complaint-এর কারণে
+কোনো একটা region-এ পাঠানো বন্ধ (`SHUTDOWN`) করে রাখতে পারে, আর তখন ওই region-এ
+কিছুই যাবে না। SES Console → **Account dashboard**-এ অবস্থা দেখা যায়।
+
+> 📌 **এই প্রজেক্টের (MailHub) জন্য region = `us-east-1`**, Singapore নয়। অফিসের
+> AWS account-এ `ap-southeast-1` বন্ধ করা আছে, আর তিনটে brand domain আগেই
+> `us-east-1`-এ verify করা। বিস্তারিত: PROGRESS.md।
 
 ---
 
@@ -135,6 +146,11 @@ default `p=none` দিয়ে), সেটাও হুবহু কপি ক
 domain" আমরা skip করেছি (ধাপ ৮), SES ডিফল্টভাবে নিজের `amazonses.com`
 address দিয়ে পাঠায় — সেখানে SPF আগে থেকেই ঠিক করা আছে। তাই DKIM +
 DMARC-ই যথেষ্ট, SPF আলাদা করে বসানো এখন **বাধ্যতামূলক না**।
+
+⚠️ **কিন্তু পরে custom MAIL FROM চালু করলে SPF বাধ্যতামূলক হয়ে যায়।** তখন খামের
+ঠিকানা হবে আপনার নিজের domain, আর সেই domain-এ SPF না থাকলে **SPF ফেল করবে** —
+Gmail/Outlook-এ inbox-এ পৌঁছানো খারাপ হবে। তাই নিয়ম: custom MAIL FROM চালু করার
+**আগেই** SPF রেকর্ড বসান, পরে নয়।
 
 ⚠️ প্রতিটা রেকর্ড বসানোর সময় proxy status **DNS only (grey cloud)**
 রাখুন, orange cloud না — মেইল রেকর্ডে Cloudflare-এর প্রক্সি কাজ করে না।

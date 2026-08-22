@@ -65,9 +65,17 @@ Phase 1 guardrail, and the one big tools have that we didn't.
 access** (not sandbox, `HEALTHY`, 166,700/day) with `innovatesolution.com`,
 `tripgic.com` and `tripmargin.com` already DKIM-verified. The old personal account
 is closed for good — **never offer to "fix" its keys.**
-- `backend/.env` still points at **`ap-southeast-1`**, where AWS has that account
-  **SHUT DOWN** and none of our domains exist, with `SES_FROM` on a dead domain. A
-  send today fails for both reasons. Region must become `us-east-1`.
+- ✅ **Cutover done (2026-08-22).** `backend/.env` now holds the office key,
+  `AWS_REGION=us-east-1` and `SES_FROM=no-reply@innovatesolution.com`, and a real
+  campaign was delivered to four Gmail/Workspace inboxes — DKIM-signed by
+  `innovatesolution.com`, `mailed-by amazonses.com`. **Never set the region back
+  to `ap-southeast-1`:** AWS has this account SHUT DOWN there.
+- 🔴 **The next blocker is `PUBLIC_URL`, and it is bigger than it looks.** It is
+  unset, so every unsubscribe link, open pixel and tracked link in a sent email
+  points at `http://localhost:4000`. Open and click tracking therefore record
+  **nothing**, and — worse — Gmail's one-click unsubscribe POSTs to that dead
+  address, so a client who unsubscribes is never suppressed and keeps being
+  emailed. Only a deploy can fix it, which is why deploy is now step 2.
 - **It is a shared LIVE account** — 83 identities, real customer mail for other
   travel brands. The sandbox used to make a coding mistake harmless; that net is
   gone. **Test only to `success@simulator.amazonses.com`.** Our bounce/complaint
@@ -218,7 +226,16 @@ guides the user through each manual task.
   internal)** · Tips / Transactional → client. Rationale: staff/prospects should see
   new features (support needs to know them; a feature can convert a prospect).
   Internal is never in the default marketing audience.
-  - The rule is written **twice** — `defaultTypesForCategory`
+  - **A second must-mirror pair:** `matchesText` + `selectAudience`
+    (`backend/src/email/audience.ts`, authoritative — it decides who is emailed)
+    and `matches` + `audienceOf` (`frontend/src/lib/audience.ts`, which produces
+    the "N people will receive this" the sender approves). **Change one, change
+    the other**, or the screen promises one audience and the server mails
+    another. Both compare in plain JS on purpose: Prisma's
+    `mode: "insensitive"` compiles to `ILIKE`, so `%` and `_` in a plan or
+    country would act as wildcards (measured: a filter of `"%"` matched every
+    contact with a plan).
+  - The category rule is written **twice** — `defaultTypesForCategory`
     (`backend/src/email/send-campaign.ts`, authoritative: applied whenever a request
     omits `includeTypes`) and `defaultTypes` (`frontend/.../campaigns/[id]/page.tsx`,
     mirrors it to pre-check the boxes). **Change both or neither.**
