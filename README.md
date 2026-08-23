@@ -44,7 +44,9 @@ Full detail + what's next: **[PROGRESS.md](PROGRESS.md)**.
 4. Contacts: add / view / CSV import
 5. Amazon SES + test email
 6. Campaign: broadcast with filter + unsubscribe
-7. Bounce/complaint webhook + suppression + tracking
+7. Bounce/complaint webhook + suppression + tracking — the code is built, but
+   nothing in AWS publishes to the webhook yet, so it does not fire in practice
+   (see PROGRESS.md § "Office AWS SES account" item 2)
 8. Frontend (Next.js dashboard) — Loops-style, connected to the API
 
 ## Run locally

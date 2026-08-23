@@ -1,6 +1,6 @@
 # PROGRESS — where we are
 
-_Last updated: 2026-08-22 · Read this first in a new session._
+_Last updated: 2026-08-23 · Read this first in a new session._
 
 > 📧 **AWS SES setup facts for our own account are in § "Office AWS SES account"
 > below.** This file is where project status (including SES) belongs. It
@@ -66,6 +66,9 @@ real emails delivered via Amazon SES.
 - **SES sending**: `@aws-sdk/client-sesv2`, UTF-8, custom headers.
 - **Webhook** `/webhooks/ses` (SNS): bounce/complaint → auto-suppress; SNS signature
   verify (`sns-validator`); dev bypass env `SNS_SKIP_VERIFY=true`.
+  - ⚠️ **Built, but nothing in AWS publishes to it yet** — so in practice bounce and
+    complaint handling does not run at all. What is missing, and who does which
+    half: § "Office AWS SES account" item 2.
 - **Tracking**: open pixel `/track/open`, click redirect `/track/click` → sets
   `openedAt` / `clickedAt`. The click route only redirects to a link that appears in
   the campaign this recipient was sent (`isCampaignLink` in `send-campaign.ts`).
@@ -376,7 +379,7 @@ one in Trash (Gmail-side, and Trash is not Spam — Gmail did not judge it).
 **Never set the region back to `ap-southeast-1`:** AWS has this account SHUT DOWN
 there, and none of our domains are verified in it.
 
-**⚠️ Two things to hold on to:**
+**⚠️ Three things to hold on to:**
 1. 🔴 **`PUBLIC_URL` is the next blocker, and it is bigger than it looks.** It is
    unset, so every unsubscribe link, open pixel and tracked link in a sent email
    points at `http://localhost:4000`. Two consequences, both seen in the first
@@ -385,7 +388,41 @@ there, and none of our domains are verified in it.
    unsubscribe POSTs to that dead address — so **a client who unsubscribes is
    never suppressed and keeps being emailed**, which is how complaints start.
    Only a deploy can fix it. That is why deploy is step 2 of the plan below.
-2. **This is a shared, LIVE production account** — 83 verified identities, real
+2. 🔴 **Bounce/complaint handling is wired in code but NOT in AWS, so it does not
+   run.** Verified read-only 2026-08-23 against the office account: it holds two
+   configuration sets, `Innovate-Email-mailflow` and `yourtripdesk-prod`, **both
+   other brands' — do not touch either**, and `innovatesolution.com` has **no
+   default configuration set**. So SES publishes our bounce/complaint events
+   nowhere, `/webhooks/ses` never fires, and everything downstream of it is
+   dormant: auto-suppression of dead addresses, and the auto-pause re-check that
+   is supposed to fire the moment SES reports a bounce. Read with item 1, the
+   honest position is that **neither an unsubscribe nor a hard bounce currently
+   suppresses anybody.**
+   - **Code half: done** (2026-08-23). `src/email/ses.ts` passes the env var
+     `SES_CONFIGURATION_SET` as `ConfigurationSetName` on every send — that file
+     builds the only `SendEmailCommand`, so it covers campaign sends and test
+     sends alike. Documented in `.env.example`; **deliberately not set in
+     `backend/.env`**, because there is no SNS topic locally and a name that does
+     not exist makes SES reject every message. Set it on the **server** only.
+     **Naming the set on the message is not optional** — a configuration set that
+     exists but is not named on the send routes nothing.
+   - **AWS half: the owner's, not done yet.** Four console steps: SNS topic
+     (Standard, same region) → configuration set → event destination for **Hard
+     bounces + Complaints** → the topic's **access policy** allowing
+     `ses.amazonaws.com` to publish (the console does not add this, and without
+     it nothing arrives and no error is shown). Then, **after deploy**, one HTTPS
+     subscription — see step 3 of "Recommended next steps".
+   - **Why a configuration set and not identity-level SNS feedback
+     notifications:** the identity is the shared `innovatesolution.com` domain and
+     other office systems send from it, so identity-level notifications would push
+     their bounces into our webhook too. The configuration set is named only on
+     our own sends.
+   - AWS's own **account-level suppression list** is on by default and does
+     already stop repeat sends to an address that hard-bounced, so this is not the
+     only guard. But it is invisible to us: our database, our Analytics screen and
+     our auto-pause denominator learn nothing from it. That is what the webhook is
+     for.
+3. **This is a shared, LIVE production account** — 83 verified identities, real
    customer mail for many other travel brands. The sandbox used to be the safety
    net that made a coding mistake harmless; **that net is gone.** Test only to
    `success@simulator.amazonses.com`. Our bounce/complaint rates now affect other
@@ -550,6 +587,21 @@ away") **stopped being true today**: the office account already has it.
    unsubscribe / open / click link ships broken to real customers. Run a real
    `next build` early in this step to confirm the lint fix in § "Simple login"
    actually holds (only checked with `eslint`/`tsc` so far, not a real build).
+   Three more things belong in this step, all from § "Office AWS SES account"
+   item 2:
+   - Set **`SES_CONFIGURATION_SET`** in the server's `backend/.env` to the name of
+     the set the owner created in AWS.
+   - Create the SNS **HTTPS subscription** to `<PUBLIC_URL>/webhooks/ses` — it
+     needs the real URL, so it cannot be done before this step. Leave **"Enable
+     raw message delivery" OFF**: it strips the SNS envelope, and `sns-validator`
+     needs the signature in that envelope, so every request would be rejected.
+   - **Confirm the subscription.** SNS POSTs a `SubscriptionConfirmation` whose
+     `SubscribeURL` is only ever printed to the backend log (`webhooks.ts` logs it
+     and returns 200). Open that URL, or the subscription sits at "Pending
+     confirmation" and delivers nothing.
+   - **Then verify it rather than assuming.** Send one campaign to
+     `bounce@simulator.amazonses.com` and check a `Suppression` row appears. If it
+     does not, the topic access policy is the first thing to look at.
 4. **One real send** — small and deliberate (10–20 people), from the deployed app.
    This is the finish line the whole project was for.
 5. **Leave WordPress** — once step 4 works twice, move the real list over.
@@ -563,6 +615,41 @@ saved segments (built, parked — see above) · global search · Teams + RBAC +
 approval · multi-brand + preference center · template image upload (R2) ·
 `EmailEvent` table. Do the `EmailEvent` table with step 2 only if it is free;
 otherwise it waits (FINAL-PLAN.md §6).
+
+### Known bugs in the send loop — found 2026-08-23, deliberately NOT fixed
+
+Two `/code-review` passes over the `SES_CONFIGURATION_SET` change surfaced three
+real problems in `src/email/send-campaign.ts`. **Fixes were written and then
+reverted at the owner's request** — the owner had asked only for the config-set
+wiring, and the send loop is the one file where an unrequested change is least
+welcome. **Do not re-apply any of this without asking first.** Recorded so the
+next session neither rediscovers them nor treats the current behaviour as
+intentional:
+
+1. **A failed send is swallowed.** The `catch` around `sendEmail` records
+   `status: "failed"` and logs nothing. One bad setting (dead AWS key, a
+   `SES_CONFIGURATION_SET` naming a set that does not exist) fails every recipient
+   identically, so an 800-person send ends with 800 `failed` rows and no clue
+   anywhere why — and the scheduled worker runs with nobody watching.
+2. **Failed recipients can never be reached.** The exactly-once check skips any
+   existing `CampaignRecipient` row *regardless of status*, so after fixing the
+   cause a re-send reports "already sent" and emails nobody. The fix has a real
+   subtlety: retry `failed` but never `sending`, because the row is written
+   *before* the SES call, so a `sending` row may already be in someone's inbox.
+3. **No brake on wholesale failure.** The 200ms pacing sleep sits on the success
+   path only, and there is no give-up rule, so a broken setting fires one
+   SendEmail per contact with no gap — hundreds of rejected calls per second
+   against a shared live AWS account.
+
+Two smaller notes from the same review, for whoever does fix these: log the
+recipient **row id**, not the email address (one bad setting fails every send, so
+addresses would put the whole customer list in the log file), and if the
+post-send DB update fails, leave the row at `sending` rather than marking it
+`failed` — `sending` counts as delivered everywhere else, which is what stops a
+re-send from mailing that person twice.
+
+None of this blocks deploy. It bites on the **first real send**, which is
+step 4 — worth raising with the owner then.
 
 ### End-of-project checks (NOT code review — do these once the system is whole)
 Per-feature `/code-review` continues as normal; these are the ones that only make

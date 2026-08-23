@@ -50,6 +50,18 @@ they never asked for. Details: PROGRESS.md § 2026-08-22.
 one real customer — the company still runs its mail from WordPress. Deploying it
 beats anything else on the backlog. See PROGRESS.md § "Recommended next steps".
 
+**The same rule applied to fixing, not just building: do what was asked, and
+report the rest.** Owner, 2026-08-23, after a request to "come back to our
+project" turned into six changed files: *"I do not understand. I just told you now
+come back our project but what you did without my concern."* A `/code-review` that
+surfaces a real problem outside the request is **information to hand over, not a
+licence to change code** — least of all `src/email/send-campaign.ts`, the one file
+that mails real customers. Three genuine bugs were found and fixed there that day;
+all three fixes were reverted, and the findings are written down instead
+(PROGRESS.md § "Known bugs in the send loop"). Writing them down cost nothing.
+Changing that file uninvited cost the owner's trust that the working tree is what
+they last agreed to.
+
 ## The other rule that outranks the rest: never leave backdated info
 
 Owner, 2026-08-22: *"always update backdated info … each time we face problems
@@ -113,6 +125,16 @@ is closed for good — **never offer to "fix" its keys.**
   campaign was delivered to four Gmail/Workspace inboxes — DKIM-signed by
   `innovatesolution.com`, `mailed-by amazonses.com`. **Never set the region back
   to `ap-southeast-1`:** AWS has this account SHUT DOWN there.
+- 🔴 **Bounce/complaint handling is wired in code but not in AWS, so it does not
+  run.** `/webhooks/ses` is built and `src/email/ses.ts` now names
+  `SES_CONFIGURATION_SET` on every send — but no SNS topic or configuration set of
+  ours exists in the account (verified read-only 2026-08-23), so SES publishes our
+  events nowhere and no bounce is ever suppressed by us. The AWS side is four
+  console steps the **owner** does, plus an HTTPS subscription that needs the
+  deployed URL. Never set `SES_CONFIGURATION_SET` locally — a name that does not
+  exist makes SES reject every message. Detail, and why a configuration set beats
+  identity-level notifications on a shared domain: PROGRESS.md § "Office AWS SES
+  account" item 2.
 - 🔴 **The next blocker is `PUBLIC_URL`, and it is bigger than it looks.** It is
   unset, so every unsubscribe link, open pixel and tracked link in a sent email
   points at `http://localhost:4000`. Open and click tracking therefore record
