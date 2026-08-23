@@ -1,5 +1,8 @@
 # docker-compose — runs the parts of our system together.
-# Step 1: only the database. We add backend + frontend in later steps.
+# Local dev: `docker compose up -d db` starts only Postgres; backend/frontend
+# run via `npm run dev` outside Docker (see CLAUDE.md "Run locally").
+# Server deploy: `docker compose up -d --build` builds and runs all three,
+# sitting behind nginx (see PROGRESS.md "Deploy").
 
 # Fixed project name — Docker always groups under "mailhub",
 # no matter what the folder is called.
@@ -15,11 +18,45 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     ports:
-      - "${DB_PORT}:5432"
+      # Bound to localhost only — nothing outside this machine should ever
+      # reach Postgres directly, on a dev laptop or on the server.
+      - "127.0.0.1:${DB_PORT}:5432"
     volumes:
       # Data lives in this named volume, NOT inside the container.
       # So restarting/removing the container never loses data.
       - mailhub_pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+    container_name: mailhub-backend
+    restart: unless-stopped
+    # All the SES/auto-pause/etc. secrets live here — never in this file.
+    env_file:
+      - ./backend/.env
+    environment:
+      # Overrides backend/.env's DATABASE_URL: inside Docker's network the
+      # database is reachable by service name ("db"), never "localhost".
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?schema=public
+      BACKEND_PORT: 4000
+    depends_on:
+      - db
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-4000}:4000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # NEXT_PUBLIC_* is baked into the JS bundle at build time, so it has
+        # to be a build arg here, not just a container environment variable.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    container_name: mailhub-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:3000:3000"
 
 volumes:
   mailhub_pgdata:
