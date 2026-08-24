@@ -135,12 +135,15 @@ is closed for good — **never offer to "fix" its keys.**
   exist makes SES reject every message. Detail, and why a configuration set beats
   identity-level notifications on a shared domain: PROGRESS.md § "Office AWS SES
   account" item 2.
-- 🔴 **The next blocker is `PUBLIC_URL`, and it is bigger than it looks.** It is
-  unset, so every unsubscribe link, open pixel and tracked link in a sent email
-  points at `http://localhost:4000`. Open and click tracking therefore record
-  **nothing**, and — worse — Gmail's one-click unsubscribe POSTs to that dead
-  address, so a client who unsubscribes is never suppressed and keeps being
-  emailed. Only a deploy can fix it, which is why deploy is now step 2.
+- ✅ **`PUBLIC_URL` blocker cleared — deploy is done (2026-08-24).** The app is
+  live at `https://mailhub.omarsec.com` with `PUBLIC_URL` set correctly there, so
+  unsubscribe/open/click links now resolve for real. **This is deliberately
+  temporary infra** — a personal AWS EC2 box and a personal domain, not the
+  company's Linux server — chosen so a deploy mistake can't touch the OVH server
+  hosting other live ITT client projects. Full detail, and what's still not done
+  (SNS/SES webhook wiring, the first real send): PROGRESS.md § "Recommended next
+  steps" item 3. Local dev still falls back to `localhost:4000` — that's fine,
+  only a deployed server's `PUBLIC_URL` matters.
 - **It is a shared LIVE account** — 83 identities, real customer mail for other
   travel brands. The sandbox used to make a coding mistake harmless; that net is
   gone. **Test only to `success@simulator.amazonses.com`.** Our bounce/complaint

@@ -25,6 +25,11 @@ services:
       # Data lives in this named volume, NOT inside the container.
       # So restarting/removing the container never loses data.
       - mailhub_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
 
   backend:
     build:
@@ -39,10 +44,20 @@ services:
       # database is reachable by service name ("db"), never "localhost".
       DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?schema=public
       BACKEND_PORT: 4000
+      # Without this Express runs in dev mode, which puts a full stack trace
+      # in the HTTP response on any unhandled error — including on the
+      # unauthenticated routes (webhooks/ses, unsubscribe, track/*).
+      NODE_ENV: production
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
       - "127.0.0.1:${BACKEND_PORT:-4000}:4000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   frontend:
     build:
@@ -54,7 +69,8 @@ services:
     container_name: mailhub-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
 
