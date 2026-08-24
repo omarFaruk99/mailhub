@@ -624,6 +624,14 @@ away") **stopped being true today**: the office account already has it.
      (mid-transfer from Namecheap to Cloudflare Registrar at the time of writing).
      **Both the server and the domain are explicitly throwaway** — moving to the
      company's permanent server/domain later is a known follow-up, not a surprise.
+   - **How to ship a change to it** (the repo lives at `/home/ubuntu/mailhub`):
+     merge to `main`, then on the server `git pull && docker compose up -d --build`.
+     The checkout tracked the `claude/deploy-docker` branch until 2026-08-24 — so a
+     plain `git pull` fetched nothing new after that branch merged, which is exactly
+     how a deploy silently ships nothing. It tracks **`main`** now; keep it there.
+     `prisma migrate deploy` runs on backend start, so a migration needs no extra
+     step. Secrets are NOT in git: `.env` and `backend/.env` live only on the server
+     (`chmod 600`), and a fresh clone needs them copied over by hand.
    - Docker build note: the Prisma `prisma-client` generator's ESM output uses
      extensionless relative imports, which Node's own ESM loader rejects
      (`ERR_MODULE_NOT_FOUND`) when running plain `tsc`-compiled output. Fix:
