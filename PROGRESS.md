@@ -196,6 +196,37 @@ real emails delivered via Amazon SES.
     choice of who receives it; falling back to the category default there silently
     swapped a hand-picked audience (fixed 2026-07-28, reported from real use).
   - (③ used to read "Send now; Schedule = Soon" — that is done now.)
+- **"Send test" is now live (2026-08-24)** — `POST /campaigns/:id/send-test`. It used
+  to be a dialog that only said "coming in a later step (it needs SES production
+  access)"; production access has existed since the office cutover, so the message
+  was simply out of date. Sends the campaign's real content to one address, subject
+  prefixed `[TEST]`, prefilled with the logged-in user's email.
+  - **It is a real message from the shared live SES account, so it keeps the same
+    guardrails as a real send:** auto-pause is checked (`sendCampaign` is the choke
+    point that normally enforces it, and this route does not go through it), and the
+    address is refused if it is suppressed. It also carries the unsubscribe footer +
+    RFC 8058 headers, which CLAUDE.md requires of every email.
+  - **The unsubscribe link in a test is a deliberate no-op** (`/unsubscribe?...&test=1`
+    → "This was a test email"). Nothing in the codebase can delete a `Suppression`
+    row, so a live link clicked by whoever is checking their own test — or prefetched
+    by a mail scanner — would lock that address out of every future campaign with no
+    way back. The check is `test === "1" && !c`, deliberately fail-closed: a bare
+    truthy check made `?test=0` on a *real* link silently skip the unsubscribe.
+  - **No `CampaignRecipient` row**, so no open pixel, no `/track/click` rewriting and
+    no send in analytics. **This cuts one way only:** if a test bounces or is marked
+    as spam, SES still reports it, so the address is still suppressed and the event
+    still counts toward auto-pause — while the test itself is not in the denominator.
+    Accepted rather than engineered around: a hard-bouncing address is genuinely bad,
+    and knowing a bounce came from a test would mean tagging test sends separately.
+  - The old unauthenticated-by-design-but-unguarded `POST /test-email`
+    (`routes/email.ts`) was **deleted**: nothing called it, and it could mail any
+    address from the production domain with no suppression, auto-pause or unsubscribe
+    checks at all.
+  - Four `/code-review` passes. Round 1 caught a dropped error message and a missing
+    `required` marker; round 2 caught the missing suppression/auto-pause/unsubscribe
+    guards; round 3 caught that requiring the address to be a Contact would fail on
+    the first click in production (the login address is not a contact there) and that
+    a live unsubscribe link was a trap; round 4 caught the `?test=0` fail-open.
 - **Analytics** (`/analytics`, in the sidebar): range chips (7/30/90 days), four stat
   tiles (Emails sent · Open rate · Click rate · Bounce rate), an **Engagement** line
   chart (sent/opened/clicked per day, hover crosshair + tooltip), a **Deliverability**

@@ -270,6 +270,15 @@ export const api = {
       stoppedReason?: string;
     }>(`/campaigns/${id}/send`, { method: "POST", body: JSON.stringify(filter) }),
   recipients: (id: string) => req<Recipient[]>(`/campaigns/${id}/recipients`),
+  // Sends a real copy to one address — carries the unsubscribe footer and RFC
+  // 8058 headers every email needs (pointed at a no-op preview page), and is
+  // refused if that address is suppressed or the brand is paused. No recipient
+  // row, so it is not counted as a send.
+  sendTestEmail: (id: string, to: string) =>
+    req<{ messageId: string }>(`/campaigns/${id}/send-test`, {
+      method: "POST",
+      body: JSON.stringify({ to }),
+    }),
 
   // Scheduling. `localDateTime` is wall-clock time ("2026-07-28T14:30") and
   // `timezone` is the IANA zone it belongs to; the backend turns the pair into a

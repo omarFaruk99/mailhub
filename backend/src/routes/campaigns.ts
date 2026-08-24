@@ -2,7 +2,15 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { CONTACT_TYPES, sendCampaign, SendingPausedError, type SendFilter } from "../email/send-campaign.js";
+import {
+  base as publicBase,
+  CONTACT_TYPES,
+  personalizeHtml,
+  sendCampaign,
+  SendingPausedError,
+  type SendFilter,
+} from "../email/send-campaign.js";
+import { sendEmail } from "../email/ses.js";
 import { isPaused } from "../email/auto-pause.js";
 import { getQueue, SEND_QUEUE, type SendJobData } from "../queue.js";
 import { zonedTimeToUtc } from "../lib/timezone.js";
@@ -248,6 +256,89 @@ router.post("/campaigns/:campaignId/send", async (req, res) => {
   }
 });
 
+// ---- Send a one-off test copy to one address ----
+//
+// A test send is a REAL message leaving the shared production SES account, so
+// it obeys the same guardrails as a real send: auto-pause, and suppression.
+// Neither is optional here — sendCampaign() is the choke point that normally
+// enforces both, and this route deliberately does not go through it.
+//
+// It carries the unsubscribe footer and RFC 8058 headers every email must have,
+// but pointed at the `test=1` no-op page rather than a real contact's link: a
+// test's whole audience is the person checking it, and clicking a live
+// unsubscribe (or a mail scanner prefetching it) would lock that address out of
+// every future campaign with no way to undo it.
+//
+// Deliberate differences from the real loop: no CampaignRecipient row, so no
+// open pixel and no /track/click rewriting (both are built from that row) and
+// no send recorded in analytics. "[TEST]" on the subject keeps it out of a real
+// thread. Note this cuts one way only — the send is not counted, but if the
+// test bounces or is marked as spam, SES tells us and that IS recorded against
+// the address, exactly as it should be.
+const testSendSchema = z.object({ to: z.email() });
+
+router.post("/campaigns/:campaignId/send-test", async (req, res) => {
+  const parsed = testSendSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter a valid email address." });
+
+  const campaign = await prisma.campaign.findUnique({ where: { id: req.params.campaignId } });
+  if (!campaign) return res.status(404).json({ error: "campaign not found" });
+
+  const email = parsed.data.to.trim().toLowerCase();
+
+  const paused = await isPaused(campaign.brandId);
+  if (paused.paused) {
+    return res.status(423).json({
+      error: `Sending is paused for this brand — ${paused.reason ?? "resume it to send again"}`,
+      paused: true,
+    });
+  }
+
+  // Suppression is keyed by address, and a test is still an email. Without this,
+  // typing a client's address in here would mail someone who had opted out.
+  const suppressed = await prisma.suppression.findUnique({
+    where: { brandId_email: { brandId: campaign.brandId, email } },
+  });
+  if (suppressed) {
+    return res.status(409).json({
+      error: `${email} has unsubscribed or bounced, so no email can be sent to it.`,
+    });
+  }
+
+  // If the address happens to be a contact, greet them by their real name, so
+  // the test shows the merge tag exactly as that person would receive it.
+  const contact = await prisma.contact.findUnique({
+    where: { brandId_email: { brandId: campaign.brandId, email } },
+    select: { name: true },
+  });
+
+  // MUST MIRROR the footer + headers in `sendCampaign` (email/send-campaign.ts).
+  // If that changes and this does not, the test stops being a sample of the real
+  // thing — which is the only reason the feature exists.
+  const unsubUrl = `${publicBase()}/unsubscribe?b=${campaign.brandId}&test=1`;
+  const html =
+    personalizeHtml(campaign.html, contact?.name) +
+    `<hr><p style="font-size:12px;color:#888">Don't want these emails?
+       <a href="${unsubUrl}">Unsubscribe</a></p>`;
+
+  try {
+    const messageId = await sendEmail({
+      to: email,
+      subject: `[TEST] ${campaign.subject}`,
+      html,
+      headers: [
+        { Name: "List-Unsubscribe", Value: `<${unsubUrl}>` },
+        { Name: "List-Unsubscribe-Post", Value: "List-Unsubscribe=One-Click" },
+      ],
+    });
+    res.json({ messageId });
+  } catch (e: any) {
+    // `error` must be the whole sentence: the frontend's shared error handler
+    // only ever reads `body.error`, so putting the detail anywhere else drops it.
+    res.status(500).json({ error: e.message || e.name });
+  }
+});
+
 // ---- Schedule a campaign (send later) ----
 // The audience/filter is frozen here, because the send runs later with nobody
 // on screen. `localDateTime` is wall-clock time ("2026-07-28T14:30") in `timezone`.
@@ -359,7 +450,25 @@ async function doUnsubscribe(brandId: string, contactId: string) {
   return true;
 }
 
+// `test=1` — the link inside a test send (see /send-test). It shows what a
+// recipient would see and changes NOTHING. It must stay a no-op: there is no
+// route anywhere that deletes a Suppression row, so a real unsubscribe fired by
+// someone checking their own test email — or by a mail scanner prefetching the
+// link — would silently lock that address out of every future campaign.
+const TEST_UNSUB_PAGE = `<div style="font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center">
+     <h2>This was a test email</h2>
+     <p>Nothing has changed. A real recipient would be unsubscribed here.</p>
+   </div>`;
+
+// Fail CLOSED. `req.query.test` is a string, so a bare truthy check treats
+// "?test=0" as a test and quietly refuses to unsubscribe a real person — the one
+// direction this must never break. Exact "1", and no contact id present, so a
+// real link that somehow picks the param up still unsubscribes.
+const isTestUnsub = (req: { query: Record<string, unknown> }) =>
+  req.query.test === "1" && !req.query.c;
+
 router.get("/unsubscribe", async (req, res) => {
+  if (isTestUnsub(req)) return res.status(200).send(TEST_UNSUB_PAGE);
   const b = String(req.query.b || "");
   const c = String(req.query.c || "");
   const ok = await doUnsubscribe(b, c);
@@ -376,6 +485,8 @@ router.get("/unsubscribe", async (req, res) => {
 });
 
 router.post("/unsubscribe", async (req, res) => {
+  // Gmail's one-click POST lands here. Same no-op rule for a test's link.
+  if (isTestUnsub(req)) return res.status(200).json({ ok: true, test: true });
   const b = String(req.query.b || "");
   const c = String(req.query.c || "");
   await doUnsubscribe(b, c);

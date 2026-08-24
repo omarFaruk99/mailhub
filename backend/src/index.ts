@@ -3,7 +3,6 @@ import express from "express";
 import cors from "cors";
 import authRouter from "./routes/auth.js";
 import brandsRouter from "./routes/brands.js";
-import emailRouter from "./routes/email.js";
 import campaignsRouter from "./routes/campaigns.js";
 import templatesRouter from "./routes/templates.js";
 import trackingRouter from "./routes/tracking.js";
@@ -38,9 +37,7 @@ app.use("/", authRouter);
 
 // Brand + contact routes.
 app.use("/", brandsRouter);
-// Test email route.
-app.use("/", emailRouter);
-// Campaign + unsubscribe routes.
+// Campaign + unsubscribe routes (test send lives here too — it needs a campaign).
 app.use("/", campaignsRouter);
 // Template (saved email designs) routes.
 app.use("/", templatesRouter);
