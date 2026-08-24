@@ -4,10 +4,18 @@ Project instructions for Claude Code. Read this first in every new session.
 
 ## What this project is
 
-A **self-hosted, multi-brand email marketing system** for the company
-**Inno Travel Tech** (mother company). It sends product updates, bug fixes,
-new features, and promotions to clients of several separate products/brands
-(Innovate Solution, Tripgic, Tripmargin, and more in future).
+A **self-hosted, multi-brand email marketing system** for **Innovate Solution**,
+the mother company (owner, 2026-08-24 — this file used to name Inno Travel Tech as
+the parent, which was wrong; innovatesolution.com is the travel-tech house that
+InnoTravelTech, ReservationHub, TripGic and Inno Message sit under). It sends
+product updates, bug fixes, new features, and promotions to the clients of
+several separate products/brands (Tripgic, Tripmargin, and more in future).
+
+**Innovate Solution is both the parent and, right now, the only brand in the app** —
+the seeded brand is called "Innovate Solution" and everything sends from
+`no-reply@innovatesolution.com`. So "brand" in this codebase means a row in the
+`Brand` table, not a company hierarchy; the parent/child distinction only starts to
+matter at multi-brand (Phase 3).
 
 Full plan: **[FINAL-PLAN.md](FINAL-PLAN.md)** — read it before doing design work.
 Beginner glossary (Bangla): **[GLOSSARY.md](GLOSSARY.md)**.
@@ -192,9 +200,25 @@ case-insensitively so a dropdown never offers both spellings.
 **Styling — use theme tokens, not hardcoded colors.** Colors/fonts are design tokens in
 `frontend/src/app/globals.css` (change once → whole app; light/dark aware). Prefer the
 token classes: `text-foreground` / `text-muted-foreground`, `bg-primary` /
-`bg-background` / `bg-muted`, `border-input`, brand accent = **violet**, danger/required =
+`bg-background` / `bg-muted`, `border-input`, app accent = **violet**, danger/required =
 **`text-destructive`** (e.g. required-field `*`). Avoid hardcoded Tailwind colors like
 `text-red-500`. Required fields: use `<Label required>…</Label>` (renders the `*`).
+
+**The app's colour and the brand's colour are two different questions — decided
+2026-08-24.** The owner tried orange, cyan and green in the app that day and chose to
+**keep violet**. Don't re-open it unprompted; the whole swap is ~8 tokens in
+`globals.css` and takes minutes if they ask again.
+- **App / dashboard: violet, free choice.** Only staff ever see it, so it carries no
+  branding duty.
+- **Anything a CLIENT receives (email templates): use the brand colours.** An email
+  that looks nothing like the website reads as phishing, which costs deliverability.
+  Taken from innovatesolution.com's own CSS tokens: navy **`#0E0E3D`** (and
+  `#1B1B5C`), cyan **`#29C5E0`** (light `#4DD3E9`), amber `#E5B04A` / `#C28D2A`,
+  backgrounds `#FFFFFF` / `#F5F7FB` / `#EBEFF7`, body text `#4B4F75`.
+- **Bright brand colours cannot carry text.** White text on `#29C5E0` is 2.1:1 — the
+  brand site itself uses the deep cyan **`#0C7186`** (5.6:1) wherever a letter has to
+  be legible, and keeps the bright one for fills and decoration. Do the same: navy or
+  `#0C7186` for text, bright cyan/amber for buttons and accents only.
 
 **Dev scope — REVERSED 2026-08-22.** The old rule was "build every feature first,
 deploy LAST", because SES production access was months away. It is not: the office

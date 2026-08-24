@@ -1,10 +1,9 @@
 # MailHub
 
-**Inno Travel Tech**-এর নিজস্ব (self-hosted), multi-brand email marketing platform।
+**Innovate Solution**-এর নিজস্ব (self-hosted), multi-brand email marketing platform।
 
-MailHub দিয়ে কোম্পানির কয়েকটি আলাদা brand-এর (Innovate Solution, Tripgic,
-Tripmargin, ভবিষ্যতে আরও) client-দের কাছে product update, নতুন feature, bug fix
-আর promotion পাঠানো হয়। প্রতিটি brand-এর নিজের contact list, নিজের sender
+MailHub দিয়ে কোম্পানির কয়েকটি আলাদা brand-এর (Tripgic, Tripmargin, ভবিষ্যতে আরও)
+client-দের কাছে product update, নতুন feature, bug fix আর promotion পাঠানো হয়। প্রতিটি brand-এর নিজের contact list, নিজের sender
 identity আর নিজের sending reputation আলাদা থাকে — তাই এক brand-এর সমস্যা অন্য
 brand-কে কখনো প্রভাবিত করে না।
 
@@ -304,4 +303,4 @@ account"-এ — এই account-এর আসল configuration-এর জন্�
 
 ## License
 
-Proprietary — © Inno Travel Tech। বাইরের ব্যবহারের জন্য নয়।
+Proprietary — © Innovate Solution। বাইরের ব্যবহারের জন্য নয়।
