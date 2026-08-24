@@ -11,7 +11,7 @@ Plan: [FINAL-PLAN.md](FINAL-PLAN.md) · Glossary (Bangla): [GLOSSARY.md](GLOSSAR
 ├── frontend/          Next.js dashboard (UI)        — built from Step 4
 ├── backend/           Express API + email worker    — built from Step 3
 │     └── migrations/  SQL that creates DB tables
-├── docker-compose.yml runs PostgreSQL (+ apps later)
+├── docker-compose.yml runs PostgreSQL (dev) or db+backend+frontend (deploy)
 ├── .env.example       copy to .env, fill secrets    (never commit .env)
 ├── FINAL-PLAN.md      full plan
 ├── GLOSSARY.md        beginner terms (Bangla)

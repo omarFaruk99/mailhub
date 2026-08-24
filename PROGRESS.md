@@ -1,6 +1,6 @@
 # PROGRESS — where we are
 
-_Last updated: 2026-08-23 · Read this first in a new session._
+_Last updated: 2026-08-24 · Read this first in a new session._
 
 > 📧 **AWS SES setup facts for our own account are in § "Office AWS SES account"
 > below.** This file is where project status (including SES) belongs. It
@@ -380,14 +380,13 @@ one in Trash (Gmail-side, and Trash is not Spam — Gmail did not judge it).
 there, and none of our domains are verified in it.
 
 **⚠️ Three things to hold on to:**
-1. 🔴 **`PUBLIC_URL` is the next blocker, and it is bigger than it looks.** It is
-   unset, so every unsubscribe link, open pixel and tracked link in a sent email
-   points at `http://localhost:4000`. Two consequences, both seen in the first
-   real send: open/click tracking records **nothing** (every recipient row shows
-   `openedAt = null` however much the mail is read), and Gmail's one-click
-   unsubscribe POSTs to that dead address — so **a client who unsubscribes is
-   never suppressed and keeps being emailed**, which is how complaints start.
-   Only a deploy can fix it. That is why deploy is step 2 of the plan below.
+1. ✅ **`PUBLIC_URL` blocker — resolved 2026-08-24.** It used to be unset, so every
+   unsubscribe link, open pixel and tracked link in a sent email pointed at
+   `http://localhost:4000` — open/click tracking recorded nothing, and Gmail's
+   one-click unsubscribe POSTed to a dead address. The deploy in § "Recommended
+   next steps" item 3 set it to the real `https://mailhub.omarsec.com`, so this no
+   longer applies **on that server**. Still applies to local dev, which is fine —
+   local dev never needs to receive real tracking/unsubscribe traffic.
 2. 🔴 **Bounce/complaint handling is wired in code but NOT in AWS, so it does not
    run.** Verified read-only 2026-08-23 against the office account: it holds two
    configuration sets, `Innovate-Email-mailflow` and `yourtripdesk-prod`, **both
@@ -582,13 +581,35 @@ away") **stopped being true today**: the office account already has it.
 2. ~~**Login**~~ ✅ **done 2026-08-22** — email + password, added ahead of this list
    because deploy without it means anyone with the URL reaches real customer data.
    See § "Simple login".
-3. **Deploy** — docker-compose (add backend + frontend services) + nginx + SSL on
-   the company Linux server. `PUBLIC_URL` **must** be the real outside URL, or every
-   unsubscribe / open / click link ships broken to real customers. Run a real
-   `next build` early in this step to confirm the lint fix in § "Simple login"
-   actually holds (only checked with `eslint`/`tsc` so far, not a real build).
-   Three more things belong in this step, all from § "Office AWS SES account"
-   item 2:
+3. ~~**Deploy**~~ ✅ **done 2026-08-24** — docker-compose now runs `db` + `backend` +
+   `frontend`; nginx + Let's Encrypt SSL in front. Live at
+   `https://mailhub.omarsec.com`. Verified: login, Contacts/Templates/Campaigns/
+   Analytics all load with no console errors (checked with Playwright), and a real
+   test send through SES succeeded end-to-end (to `success@simulator.amazonses.com`,
+   then deleted).
+   - ⚠️ **Not the company Linux server — deliberately temporary personal infra.**
+     Owner does not want mistakes risking the OVH box that hosts other live ITT
+     client projects (see [[deploy-server-temp]]). Server: a fresh AWS EC2
+     `t3.micro` (`Mailhub Server`, personal AWS account, `ap-southeast-1`), SSH
+     alias `mailhub-server`, Elastic IP `13.213.171.154` (so the IP survives a
+     stop/start — a plain auto-assigned public IP does not). Domain:
+     `mailhub.omarsec.com`, a subdomain of the owner's personal `omarsec.com`
+     (mid-transfer from Namecheap to Cloudflare Registrar at the time of writing).
+     **Both the server and the domain are explicitly throwaway** — moving to the
+     company's permanent server/domain later is a known follow-up, not a surprise.
+   - Docker build note: the Prisma `prisma-client` generator's ESM output uses
+     extensionless relative imports, which Node's own ESM loader rejects
+     (`ERR_MODULE_NOT_FOUND`) when running plain `tsc`-compiled output. Fix:
+     `backend/Dockerfile` runs the server via `npx tsx src/index.ts` (same
+     resolver `npm run dev` already relies on) instead of `node dist/index.js`,
+     with `tsc --noEmit` kept as a build-time type-check gate so a real type
+     error still fails the build instead of shipping silently.
+   - `PUBLIC_URL` **must** be the real outside URL, or every unsubscribe / open /
+     click link ships broken to real customers. Now set correctly on the deploy
+     server; **do not let it drift back to an IP or localhost** on a future
+     redeploy or server move.
+   - Three more things belong in this step, all from § "Office AWS SES account"
+     item 2 — **not done yet**:
    - Set **`SES_CONFIGURATION_SET`** in the server's `backend/.env` to the name of
      the set the owner created in AWS.
    - Create the SNS **HTTPS subscription** to `<PUBLIC_URL>/webhooks/ses` — it
