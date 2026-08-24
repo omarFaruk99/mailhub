@@ -125,16 +125,16 @@ is closed for good — **never offer to "fix" its keys.**
   campaign was delivered to four Gmail/Workspace inboxes — DKIM-signed by
   `innovatesolution.com`, `mailed-by amazonses.com`. **Never set the region back
   to `ap-southeast-1`:** AWS has this account SHUT DOWN there.
-- 🔴 **Bounce/complaint handling is wired in code but not in AWS, so it does not
-  run.** `/webhooks/ses` is built and `src/email/ses.ts` now names
-  `SES_CONFIGURATION_SET` on every send — but no SNS topic or configuration set of
-  ours exists in the account (verified read-only 2026-08-23), so SES publishes our
-  events nowhere and no bounce is ever suppressed by us. The AWS side is four
-  console steps the **owner** does, plus an HTTPS subscription that needs the
-  deployed URL. Never set `SES_CONFIGURATION_SET` locally — a name that does not
-  exist makes SES reject every message. Detail, and why a configuration set beats
-  identity-level notifications on a shared domain: PROGRESS.md § "Office AWS SES
-  account" item 2.
+- ✅ **Bounce/complaint handling is wired in code AND in AWS, verified working
+  (2026-08-24).** `/webhooks/ses` fires for real now: SNS topic
+  `productupdate-ses-events` + SES configuration set `productupdate-config` exist
+  in the office account (`us-east-1`), with an event destination for Hard bounces
+  + Complaints, a topic access policy allowing `ses.amazonaws.com` to publish, and
+  a confirmed HTTPS subscription to `https://mailhub.omarsec.com/webhooks/ses`.
+  Verified with a real send to `bounce@simulator.amazonses.com` — the contact was
+  auto-suppressed. `SES_CONFIGURATION_SET=productupdate-config` is set on the
+  **deploy server only** — never set it locally, a name that doesn't exist makes
+  SES reject every message. Detail: PROGRESS.md § "Recommended next steps" item 3.
 - ✅ **`PUBLIC_URL` blocker cleared — deploy is done (2026-08-24).** The app is
   live at `https://mailhub.omarsec.com` with `PUBLIC_URL` set correctly there, so
   unsubscribe/open/click links now resolve for real. **This is deliberately

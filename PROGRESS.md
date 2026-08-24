@@ -387,30 +387,26 @@ there, and none of our domains are verified in it.
    next steps" item 3 set it to the real `https://mailhub.omarsec.com`, so this no
    longer applies **on that server**. Still applies to local dev, which is fine —
    local dev never needs to receive real tracking/unsubscribe traffic.
-2. 🔴 **Bounce/complaint handling is wired in code but NOT in AWS, so it does not
-   run.** Verified read-only 2026-08-23 against the office account: it holds two
-   configuration sets, `Innovate-Email-mailflow` and `yourtripdesk-prod`, **both
-   other brands' — do not touch either**, and `innovatesolution.com` has **no
-   default configuration set**. So SES publishes our bounce/complaint events
-   nowhere, `/webhooks/ses` never fires, and everything downstream of it is
-   dormant: auto-suppression of dead addresses, and the auto-pause re-check that
-   is supposed to fire the moment SES reports a bounce. Read with item 1, the
-   honest position is that **neither an unsubscribe nor a hard bounce currently
-   suppresses anybody.**
-   - **Code half: done** (2026-08-23). `src/email/ses.ts` passes the env var
-     `SES_CONFIGURATION_SET` as `ConfigurationSetName` on every send — that file
-     builds the only `SendEmailCommand`, so it covers campaign sends and test
-     sends alike. Documented in `.env.example`; **deliberately not set in
-     `backend/.env`**, because there is no SNS topic locally and a name that does
-     not exist makes SES reject every message. Set it on the **server** only.
-     **Naming the set on the message is not optional** — a configuration set that
-     exists but is not named on the send routes nothing.
-   - **AWS half: the owner's, not done yet.** Four console steps: SNS topic
-     (Standard, same region) → configuration set → event destination for **Hard
-     bounces + Complaints** → the topic's **access policy** allowing
-     `ses.amazonaws.com` to publish (the console does not add this, and without
-     it nothing arrives and no error is shown). Then, **after deploy**, one HTTPS
-     subscription — see step 3 of "Recommended next steps".
+2. ✅ **Bounce/complaint handling — wired in code AND in AWS, verified working
+   (2026-08-24).** It used to run nowhere: the office account held two
+   configuration sets, `Innovate-Email-mailflow` and `yourtripdesk-prod` (**both
+   other brands' — still do not touch either**), and `innovatesolution.com` had no
+   configuration set of its own. A third set, **`productupdate-config`**, now
+   exists alongside them for this project only. Full detail of what was set up:
+   § "Recommended next steps" item 3.
+   - **Code half** (done 2026-08-23, unchanged). `src/email/ses.ts` passes the env
+     var `SES_CONFIGURATION_SET` as `ConfigurationSetName` on every send — that
+     file builds the only `SendEmailCommand`, so it covers campaign sends and test
+     sends alike. **Deliberately not set in local dev's `backend/.env`** (no SNS
+     topic locally, and a name that doesn't exist makes SES reject every message)
+     — only ever set on the deploy server.
+   - **AWS half: done.** SNS topic → configuration set → event destination
+     (**Hard bounces + Complaints**) → topic access policy for `ses.amazonaws.com`
+     → HTTPS subscription → confirmed → verified with a real
+     `bounce@simulator.amazonses.com` send. The owner rehearsed all of this once in
+     their own personal AWS account/region first, then repeated it in the office
+     account for real — useful pattern for handing this kind of AWS console work
+     to someone less experienced (their DevOps colleague) next time.
    - **Why a configuration set and not identity-level SNS feedback
      notifications:** the identity is the shared `innovatesolution.com` domain and
      other office systems send from it, so identity-level notifications would push
@@ -589,7 +585,7 @@ away") **stopped being true today**: the office account already has it.
    then deleted).
    - ⚠️ **Not the company Linux server — deliberately temporary personal infra.**
      Owner does not want mistakes risking the OVH box that hosts other live ITT
-     client projects (see [[deploy-server-temp]]). Server: a fresh AWS EC2
+     client projects. Server: a fresh AWS EC2
      `t3.micro` (`Mailhub Server`, personal AWS account, `ap-southeast-1`), SSH
      alias `mailhub-server`, Elastic IP `13.213.171.154` (so the IP survives a
      stop/start — a plain auto-assigned public IP does not). Domain:
@@ -608,21 +604,33 @@ away") **stopped being true today**: the office account already has it.
      click link ships broken to real customers. Now set correctly on the deploy
      server; **do not let it drift back to an IP or localhost** on a future
      redeploy or server move.
-   - Three more things belong in this step, all from § "Office AWS SES account"
-     item 2 — **not done yet**:
-   - Set **`SES_CONFIGURATION_SET`** in the server's `backend/.env` to the name of
-     the set the owner created in AWS.
-   - Create the SNS **HTTPS subscription** to `<PUBLIC_URL>/webhooks/ses` — it
-     needs the real URL, so it cannot be done before this step. Leave **"Enable
-     raw message delivery" OFF**: it strips the SNS envelope, and `sns-validator`
-     needs the signature in that envelope, so every request would be rejected.
-   - **Confirm the subscription.** SNS POSTs a `SubscriptionConfirmation` whose
-     `SubscribeURL` is only ever printed to the backend log (`webhooks.ts` logs it
-     and returns 200). Open that URL, or the subscription sits at "Pending
-     confirmation" and delivers nothing.
-   - **Then verify it rather than assuming.** Send one campaign to
-     `bounce@simulator.amazonses.com` and check a `Suppression` row appears. If it
-     does not, the topic access policy is the first thing to look at.
+   - ✅ **Bounce/complaint webhook — done and verified 2026-08-24**, all from §
+     "Office AWS SES account" item 2:
+     - SNS topic `productupdate-ses-events` + SES configuration set
+       `productupdate-config` created in the **office** account (`540002947526`,
+       `us-east-1`) — sits alongside the other brands' `Innovate-Email-mailflow`
+       and `yourtripdesk-prod` sets, untouched. Event destination: **Hard bounces +
+       Complaints** only.
+     - Topic access policy has the `AllowSESPublish` statement for
+       `ses.amazonaws.com` (the console does not add this automatically — without
+       it, sends succeed but nothing ever reaches the topic, with no error).
+     - HTTPS subscription to `https://mailhub.omarsec.com/webhooks/ses` created
+       and **confirmed** (the `SubscribeURL` only ever appears in the backend log —
+       `docker logs mailhub-backend | grep SubscribeURL` — then open that URL).
+     - **`SES_CONFIGURATION_SET=productupdate-config`** set in the server's
+       `backend/.env`; backend restarted to pick it up.
+     - **Verified for real, not assumed:** sent a campaign to
+       `bounce@simulator.amazonses.com` through the live app — the contact's
+       `status` flipped to `bounced` (a real `Suppression` row), confirming the
+       full chain (send → SES bounce → SNS → `/webhooks/ses` → auto-suppress)
+       works end-to-end on the office account. Test contact/campaign deleted after
+       (the `Suppression` row was deliberately left in place — that's correct
+       behavior, see "Editing and deleting" rules in CLAUDE.md).
+     - Rehearsed once first in the owner's **personal** AWS account/region
+       (`ap-southeast-1`) as a dry run before touching the office account — same
+       steps, disposable resources (`practaice-maihub-ses-events` topic,
+       `mailhub-practice` set), not connected to real SES sending, since practicing
+       first was safer for both the account and their own learning.
 4. **One real send** — small and deliberate (10–20 people), from the deployed app.
    This is the finish line the whole project was for.
 5. **Leave WordPress** — once step 4 works twice, move the real list over.
