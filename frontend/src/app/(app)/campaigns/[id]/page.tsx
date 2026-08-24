@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ContactType } from "@/lib/api";
 import { useBrand } from "@/lib/use-brand";
+import { useAuthUser } from "@/lib/use-auth";
 import { sendingStatusKey, useSendingStatus } from "@/lib/use-sending-status";
 import type { Campaign, Contact, Recipient, SendFilter } from "@/lib/api";
 import { audienceOf } from "@/lib/audience";
@@ -14,6 +15,7 @@ import { COMMON_PLANS, canonical, mergeOptions } from "@/lib/options";
 import { countryNames } from "@/lib/countries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogClose,
@@ -136,6 +138,7 @@ function CampaignSend() {
   const id = String(rawId);
   const { brand } = useBrand();
   const brandId = brand?.id;
+  const me = useAuthUser(true);
   const qc = useQueryClient();
   const router = useRouter();
 
@@ -196,6 +199,10 @@ function CampaignSend() {
   const [open, setOpen] = useState<Record<string, boolean>>({ audience: true, filters: false, when: false, checklist: false });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
+  // null = "follow the logged-in user"; a string = the user has typed one.
+  // Resolved once, so the box on screen and the address actually mailed cannot
+  // be computed by two expressions that drift apart.
+  const [testEmail, setTestEmail] = useState<string | null>(null);
   // Schedule form. Each piece is an *override*: null means "follow the campaign"
   // (a scheduled campaign opens on its own saved time), a value means the user
   // has touched the field. Deriving instead of syncing avoids effect cascades.
@@ -355,6 +362,20 @@ function CampaignSend() {
     },
     onError: (e: Error) => toast.error("Could not cancel: " + e.message),
   });
+
+  const testMut = useMutation({
+    mutationFn: (to: string) => api.sendTestEmail(id, to),
+    onSuccess: (_r, to) => {
+      toast.success(`Test sent to ${to}`);
+      setTestOpen(false);
+      // Reset here as well as in onOpenChange: closing the dialog from code
+      // does not run onOpenChange, so without this the box would reopen still
+      // showing the last address tested.
+      setTestEmail(null);
+    },
+    onError: (e: Error) => toast.error("Could not send test: " + e.message),
+  });
+  const testTo = testEmail ?? me.data?.email ?? "";
 
   const recs = recipients.data ?? [];
   // email → contact, so the results table can show each recipient's name & type
@@ -960,18 +981,48 @@ function CampaignSend() {
       </Dialog>
 
       {/* ===== Send test ===== */}
-      <Dialog open={testOpen} onOpenChange={setTestOpen}>
+      <Dialog
+        open={testOpen}
+        onOpenChange={(o) => {
+          setTestOpen(o);
+          // Drop the typed address on close, so the box goes back to offering
+          // the logged-in user instead of whoever was tested last.
+          if (!o) setTestEmail(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Send a test email</DialogTitle>
             <DialogDescription>
-              A test send to your own address is coming in a later step (it needs SES production access).
-              For now, use the preview on the left to check how the email looks.
+              Sends a real copy of this email to one address, right now. The content is exactly
+              what a customer would get; the subject is marked [TEST], the unsubscribe link only
+              shows a preview, and it is not counted as a send in your analytics.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>Close</DialogClose>
-          </DialogFooter>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              testMut.mutate(testTo);
+            }}
+          >
+            <div className="space-y-2 py-2">
+              <Label htmlFor="test-email" required>Send to</Label>
+              <Input
+                id="test-email"
+                type="email"
+                required
+                placeholder="Your own email address"
+                value={testTo}
+                onChange={(e) => setTestEmail(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <DialogClose render={<Button type="button" variant="outline" />}>Close</DialogClose>
+              <Button type="submit" disabled={testMut.isPending}>
+                {testMut.isPending ? "Sending…" : "Send test"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

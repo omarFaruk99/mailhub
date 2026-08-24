@@ -40,7 +40,9 @@ const PAUSE_CHECK_EVERY = 25;
 // pixel and tracked link in an email points here, and those links are opened days
 // later from a stranger's inbox — so it must be the real outside URL, never
 // "localhost" (which would resolve to the RECIPIENT's own machine).
-const base = () => {
+// Exported so the test-send route builds its unsubscribe link from the same
+// rule; a second copy of this fallback would drift.
+export const base = () => {
   const url = process.env.PUBLIC_URL?.trim();
   if (url) return url.replace(/\/+$/, "");
   return `http://localhost:${process.env.BACKEND_PORT || 4000}`;
